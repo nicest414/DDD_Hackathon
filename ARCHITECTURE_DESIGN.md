@@ -2,26 +2,28 @@
 
 ## 1. 全体構成
 
-DDDは、スマホクライアント、PC側ローカルエージェント、AI Orchestrator、GitHub連携で構成する。
+DDDは、スマホクライアント、PC側VS Code拡張、ユーザー持ち込みAI接続、GitHub連携で構成する。
 
 アーキテクチャ上の中心概念は、開発を **Stimulus、Prediction、Action、Reward、Memory、Reinforcement** のループとして扱うことである。
+
+設計上の前提として、スマホアプリは操作UIに徹し、AI APIキー、GitHubトークン、生成コードの実行環境は保持しない。秘密情報と生成処理はPC側のVS Code拡張に集約する。
 
 ```text
 Cue Deck / Flutter App
   |
   | Swipe Synapse / WebSocket
   v
-Builder Cortex
+Builder Cortex / VS Code Extension
   |          \
   |           \ GitHub API / GitHub CLI
   v            v
-Reward Predictor  GitHub Reward Pathway
+Reward Predictor / User AI Adapter  GitHub Reward Pathway
   |
   v
-LLM / Baseline Dopamine
+User-owned LLM / Baseline Dopamine
 ```
 
-Flutter Appは刺激提示と判断入力を担当する。Builder CortexはPC上でコード生成、実行、プレビュー、GitHub保存を担当する。Reward PredictorはAIへの問い合わせ、提案の変化量推定、レスポンス検証を担当する。
+Flutter Appは刺激提示と判断入力を担当する。Builder CortexはVS Code拡張としてPC上で動作し、コード生成、実行、プレビュー、GitHub保存を担当する。Reward Predictorはユーザーが契約・所有するAIリソースへの問い合わせ、提案の変化量推定、レスポンス検証を担当する。
 
 ## 2. 主要コンポーネント
 
@@ -38,7 +40,7 @@ Flutter製のスマホクライアント。ユーザーに「次に判断すべ�
 
 ### 2.2 Swipe Synapse
 
-ユーザー判断を低遅延イベントとしてPC側へ送る伝達レイヤー。
+ユーザー判断を低遅延イベントとしてPC側のVS Code拡張へ送る伝達レイヤー。
 
 - `DecisionCard` を1枚ずつ表示する
 - 右スワイプをacceptedとして記録する
@@ -56,17 +58,18 @@ Flutter製のスマホクライアント。ユーザーに「次に判断すべ�
 
 ### 2.4 Builder Cortex
 
-PC上で起動するローカルエージェント。
+PC上のVS Code Extension Hostで起動する拡張機能。
 
 - Flutter AppとのWebSocketセッション管理
-- 一時ワークスペース作成
+- VS Codeワークスペースまたは一時ワークスペース作成
 - 生成コードのファイル書き込み
-- ビルド、テスト、プレビュー起動
+- VS Code Taskまたは統合ターミナル経由のビルド、テスト、プレビュー起動
+- VS Code Webviewまたは外部ブラウザでのプレビュー表示
 - GitHub保存処理の呼び出し
 
 ### 2.5 Reward Predictor
 
-AI Orchestratorの中核。
+ユーザー持ち込みAI接続の中核。
 
 - `generateNextCard` で次の提案カードを生成する
 - `generateApp` でアプリ仕様とコード案を生成する
@@ -75,7 +78,17 @@ AI Orchestratorの中核。
 - JSON SchemaでAIレスポンスを検証する
 - 失敗時はBaseline Dopamineへフォールバックする
 
-### 2.6 Feedback Nucleus
+### 2.6 User AI Adapter
+
+各ユーザーが契約・所有するAIリソースを接続するアダプタ。
+
+- VS Code SecretStorageまたは環境変数からユーザーのAI APIキーを読み込む
+- OpenAI互換API、クラウドAI、ローカルLLMなどを差し替え可能にする
+- サービス側では共通のAI APIキーを保持しない
+- スマホ側にはAI APIキーを保存しない
+- モデル名、ベースURL、タイムアウト、利用上限をVS Code拡張の設定として管理する
+
+### 2.7 Feedback Nucleus
 
 ユーザーに即時報酬を返す表示レイヤー。
 
@@ -85,7 +98,7 @@ AI Orchestratorの中核。
 - GitHub Pull Request URL表示
 - 採用判断による変化点の表示
 
-### 2.7 GitHub Reward Pathway
+### 2.8 GitHub Reward Pathway
 
 GitHub保存を担当するRepositoryレイヤー。
 
@@ -95,9 +108,9 @@ GitHub保存を担当するRepositoryレイヤー。
 - Pull Request作成
 - リポジトリURL、ブランチ名、Pull Request URLの返却
 
-### 2.8 Baseline Dopamine
+### 2.9 Baseline Dopamine
 
-外部APIが失敗してもデモの報酬ループを維持するフォールバック。
+ユーザーのAI接続が未設定、上限到達、または失敗した場合でもデモの報酬ループを維持するフォールバック。
 
 - 固定の提案カード
 - 固定の生成仕様
@@ -156,7 +169,44 @@ GitHub保存を担当するRepositoryレイヤー。
 | pullRequestUrl | string | 作成済みPull RequestのURL。未作成の場合は空文字 |
 | updatedAt | DateTime | 更新日時 |
 
+### AIProviderConfig
+
+| フィールド | 型 | 説明 |
+| --- | --- | --- |
+| provider | string | openai-compatible / local / custom |
+| baseUrl | string | APIベースURL。ローカルLLMの場合はローカルエンドポイント |
+| model | string | 利用モデル名 |
+| apiKeyRef | string | VS Code SecretStorageまたは環境変数への参照名 |
+| timeoutMs | number | AI呼び出しのタイムアウト |
+| maxTokens | number | 1回の生成で使う最大トークン数 |
+| fallbackEnabled | boolean | 失敗時にBaseline Dopamineへ切り替えるか |
+
 ## 4. API設計
+
+この章のAPIは外部公開APIではなく、VS Code拡張内のサービス境界を表す。スマホアプリはWebSocketイベントを通じてBuilder Cortexへ要求し、AI接続とGitHub接続はPC側で完結する。
+
+### configureAIProvider
+
+ユーザー自身のAI接続情報をPC側のVS Code拡張に設定する。
+
+入力:
+
+- provider
+- baseUrl
+- model
+- apiKey or apiKeyEnvName
+- timeoutMs
+- maxTokens
+
+出力:
+
+```json
+{
+  "provider": "openai-compatible",
+  "model": "example-model",
+  "status": "configured"
+}
+```
 
 ### generateNextCard
 
@@ -245,22 +295,24 @@ GitHubへ保存するファイル:
 
 ## 6. 主要フロー
 
-1. PCでBuilder Cortexを起動する
-2. スマホアプリがWebSocketでBuilder Cortexへ接続する
-3. ユーザーが初期プロンプトを入力する
-4. Reward Predictorが提案カードと予測報酬を生成する
-5. ユーザーがカードをスワイプする
-6. Decision Hippocampusが判断イベントを保存する
-7. Builder Cortexが生成コードと仕様を作る
-8. DockerまたはローカルCLIでプレビューを起動する
-9. Feedback NucleusがプレビューURL、差分、ログをスマホへ返す
-10. GitHub Reward PathwayがGitHubへpushし、Pull Request URLを返す
-11. Reward Predictorが判断履歴をもとに次の提案カードを調整する
+1. PCでVS Codeを開き、Builder Cortex拡張を起動する
+2. ユーザーがVS Code拡張でAIプロバイダを設定する。未設定の場合はBaseline Dopamineを使う
+3. スマホアプリがWebSocketでBuilder Cortexへ接続する
+4. ユーザーが初期プロンプトを入力する
+5. Reward Predictorがユーザー持ち込みAIまたはBaseline Dopamineで提案カードと予測報酬を生成する
+6. ユーザーがカードをスワイプする
+7. Decision Hippocampusが判断イベントを保存する
+8. Builder Cortexが生成コードと仕様を作る
+9. VS Code Task、統合ターミナル、またはローカルCLIでプレビューを起動する
+10. Feedback NucleusがプレビューURL、差分、ログをスマホへ返す
+11. GitHub Reward PathwayがGitHubへpushし、Pull Request URLを返す
+12. Reward Predictorが判断履歴をもとに次の提案カードを調整する
 
 ## 7. エラー設計
 
 - AIレスポンスが不正なJSONの場合、再生成可能なエラーとして扱う
-- AI APIが失敗した場合、Baseline Dopamineへフォールバックする
+- ユーザーのAI接続が未設定、認証失敗、上限到達、または通信失敗した場合、Baseline Dopamineへフォールバックする
+- AI APIキーやトークンはPC側のVS Code拡張でのみ扱い、スマホ側には送信しない
 - GitHub認証に失敗した場合、ローカル保存とプレビューは継続する
 - GitHub pushに失敗した場合、Pull Request URLだけ空にして再試行可能にする
 - 生成に失敗しても、Project、Decision、DecisionCardは失わない
