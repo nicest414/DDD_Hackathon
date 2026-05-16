@@ -35,6 +35,14 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DecisionStore = void 0;
 const path = __importStar(require("path"));
+function safeParseJSON(value, fallback) {
+    try {
+        return JSON.parse(value);
+    }
+    catch {
+        return fallback;
+    }
+}
 class DecisionStore {
     constructor() {
         this.db = null;
@@ -82,6 +90,7 @@ class DecisionStore {
     }
     saveDecision(d) {
         const db = this.assertInitialized();
+        db.prepare('DELETE FROM decisions WHERE cardId = ?').run(d.cardId);
         db.prepare(`
       INSERT OR REPLACE INTO decisions VALUES (?,?,?,?,?)
     `).run(d.id, d.cardId, d.action, d.reason, d.createdAt);
@@ -115,9 +124,9 @@ class DecisionStore {
         return {
             id: row.id,
             projectId: row.projectId,
-            spec: JSON.parse(row.spec),
+            spec: safeParseJSON(row.spec, {}),
             source: row.source,
-            previewState: JSON.parse(row.previewState),
+            previewState: safeParseJSON(row.previewState, {}),
             repositoryUrl: row.repositoryUrl,
             branchName: row.branchName,
             pullRequestUrl: row.pullRequestUrl,

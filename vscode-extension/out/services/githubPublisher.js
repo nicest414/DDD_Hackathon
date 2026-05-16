@@ -50,7 +50,12 @@ class GitHubPublisher {
         const decisionsPath = path.join(repoPath, 'ddd-decisions.json');
         const originalBranch = await this._currentBranch(repoPath);
         try {
-            await execFileAsync('git', ['checkout', '-b', branch], { cwd: repoPath, timeout: GIT_TIMEOUT_MS, shell: false });
+            try {
+                await execFileAsync('git', ['checkout', branch], { cwd: repoPath, timeout: GIT_TIMEOUT_MS, shell: false });
+            }
+            catch {
+                await execFileAsync('git', ['checkout', '-b', branch], { cwd: repoPath, timeout: GIT_TIMEOUT_MS, shell: false });
+            }
             // Write spec and decisions JSON
             await fs_1.promises.writeFile(specPath, JSON.stringify(app.spec, null, 2));
             await fs_1.promises.writeFile(decisionsPath, JSON.stringify(decisions, null, 2));

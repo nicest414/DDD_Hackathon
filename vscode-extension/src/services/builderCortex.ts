@@ -39,8 +39,9 @@ export class BuilderCortex {
       createdAt: new Date().toISOString(),
     };
 
-    list.push(decision);
-    this.decisions.set(projectId, list);
+    const updatedList = list.filter((d) => d.cardId !== cardId);
+    updatedList.push(decision);
+    this.decisions.set(projectId, updatedList);
     this.store.saveDecision(decision);
 
     this.output.appendLine(`[DDD] Decision: ${action} → ${cardId}`);

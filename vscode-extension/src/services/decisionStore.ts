@@ -5,6 +5,14 @@ import { Project, DecisionCard, Decision, GeneratedApp } from '../models/types';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DB = any;
 
+function safeParseJSON<T>(value: string, fallback: T): T {
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 export class DecisionStore {
   private db: DB | null = null;
 
@@ -55,6 +63,7 @@ export class DecisionStore {
 
   saveDecision(d: Decision): void {
     const db = this.assertInitialized();
+    db.prepare('DELETE FROM decisions WHERE cardId = ?').run(d.cardId);
     db.prepare(`
       INSERT OR REPLACE INTO decisions VALUES (?,?,?,?,?)
     `).run(d.id, d.cardId, d.action, d.reason, d.createdAt);
@@ -94,9 +103,9 @@ export class DecisionStore {
     return {
       id: row.id,
       projectId: row.projectId,
-      spec: JSON.parse(row.spec),
+      spec: safeParseJSON(row.spec, {}),
       source: row.source,
-      previewState: JSON.parse(row.previewState),
+      previewState: safeParseJSON(row.previewState, {}),
       repositoryUrl: row.repositoryUrl,
       branchName: row.branchName,
       pullRequestUrl: row.pullRequestUrl,
