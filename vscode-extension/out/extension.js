@@ -115,6 +115,10 @@ function activate(context) {
         await cortex.generateApp(currentProjectId);
         vscode.window.showInformationMessage('DDD: App generated');
     }), vscode.commands.registerCommand('ddd.openPreview', () => {
+        if (!currentProjectId) {
+            vscode.window.showWarningMessage('DDD: No active project. Start a session first.');
+            return;
+        }
         cortex.startPreview();
     }), vscode.commands.registerCommand('ddd.publishToGitHub', async () => {
         if (!currentProjectId) {
@@ -123,13 +127,15 @@ function activate(context) {
         }
         const publisher = new githubPublisher_1.GitHubPublisher();
         const decisions = store.getDecisions(currentProjectId);
-        // TODO: load app from store
-        const result = publisher.publish({
-            id: `app-${currentProjectId}`, projectId: currentProjectId,
-            spec: {}, source: '', previewState: {},
-            repositoryUrl: '', branchName: '', pullRequestUrl: '',
-            updatedAt: new Date().toISOString(),
-        }, decisions);
+        let app = store.getGeneratedApp(currentProjectId);
+        if (!app) {
+            app = await cortex.generateApp(currentProjectId);
+        }
+        if (!app) {
+            vscode.window.showErrorMessage('DDD: App generation failed.');
+            return;
+        }
+        const result = publisher.publish(app, decisions);
         if (result.pullRequestUrl) {
             ws.send({ type: 'pr', repositoryUrl: result.repositoryUrl, branchName: result.branchName, url: result.pullRequestUrl });
             vscode.window.showInformationMessage(`DDD: PR created → ${result.pullRequestUrl}`);

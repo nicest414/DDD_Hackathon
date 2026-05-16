@@ -70,7 +70,7 @@ class BuilderCortex {
         const project = this.projects.get(projectId);
         if (!project) {
             vscode.window.showErrorMessage(`DDD: Project ${projectId} not found`);
-            return;
+            return undefined;
         }
         const decisions = this.decisions.get(projectId) ?? [];
         const allCards = this.cards.get(projectId) ?? [];
@@ -93,6 +93,7 @@ class BuilderCortex {
         this.store.saveGeneratedApp(app);
         project.status = 'generated';
         this.output.appendLine('[DDD] App generated');
+        return app;
     }
     startPreview() {
         const terminal = vscode.window.createTerminal('DDD Preview');
@@ -125,7 +126,12 @@ class BuilderCortex {
         }
         catch (err) {
             if (fallback) {
-                return this.baseline.getNextCard(projectId, decisions);
+                const card = this.baseline.getNextCard(projectId, decisions);
+                if (card) {
+                    this.cards.get(projectId)?.push(card);
+                    this.store.saveCard(card);
+                }
+                return card;
             }
             throw err;
         }

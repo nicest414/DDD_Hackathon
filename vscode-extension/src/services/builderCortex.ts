@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { Project, Decision, DecisionCard } from '../models/types';
+import { Project, Decision, DecisionCard, GeneratedApp } from '../models/types';
 import { AIAdapter, AIAdapterError } from './aiAdapter';
 import { BaselineDopamine } from './baselineDopamine';
 import { DDDWebSocketServer } from './websocketServer';
@@ -41,11 +41,11 @@ export class BuilderCortex {
     }
   }
 
-  async generateApp(projectId: string): Promise<void> {
+  async generateApp(projectId: string): Promise<GeneratedApp | undefined> {
     const project = this.projects.get(projectId);
     if (!project) {
       vscode.window.showErrorMessage(`DDD: Project ${projectId} not found`);
-      return;
+      return undefined;
     }
 
     const decisions = this.decisions.get(projectId) ?? [];
@@ -72,6 +72,7 @@ export class BuilderCortex {
     this.store.saveGeneratedApp(app);
     project.status = 'generated';
     this.output.appendLine('[DDD] App generated');
+    return app;
   }
 
   startPreview(): void {
@@ -109,7 +110,12 @@ export class BuilderCortex {
       return card;
     } catch (err) {
       if (fallback) {
-        return this.baseline.getNextCard(projectId, decisions);
+        const card = this.baseline.getNextCard(projectId, decisions);
+        if (card) {
+          this.cards.get(projectId)?.push(card);
+          this.store.saveCard(card);
+        }
+        return card;
       }
       throw err;
     }

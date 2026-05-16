@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import '../models/decision_card.dart';
 import '../models/decision.dart';
 import '../models/project.dart';
+import '../config/app_config.dart';
 import '../services/baseline_dopamine.dart';
 import '../services/websocket_service.dart';
 import '../widgets/proposal_card.dart';
@@ -31,6 +32,12 @@ class _SwipeScreenState extends State<SwipeScreen> {
     _tryConnect();
   }
 
+  @override
+  void dispose() {
+    _ws.disconnect();
+    super.dispose();
+  }
+
   void _preloadCards() {
     for (int i = 0; i < 3 && _baseline.hasMore(_decisions); i++) {
       _cards.add(_baseline.getNextCard(_decisions));
@@ -38,7 +45,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
   }
 
   Future<void> _tryConnect() async {
-    await _ws.connect('ws://localhost:3000');
+    await _ws.connect(AppConfig.serverUrl);
     if (_ws.status == WsStatus.connected) {
       _ws.sendStartSession(widget.project.toJson());
     }
@@ -71,10 +78,15 @@ class _SwipeScreenState extends State<SwipeScreen> {
       });
 
       if (_currentIndex >= _baseline.totalCards()) {
-        Navigator.of(context).pushReplacement(MaterialPageRoute(
-          builder: (_) =>
-              ResultScreen(project: widget.project, decisions: _decisions, cards: _cards),
-        ));
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => ResultScreen(
+              project: widget.project,
+              decisions: _decisions,
+              cards: _cards,
+            ),
+          ),
+        );
       }
     });
   }
@@ -149,8 +161,10 @@ class _Header extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          Text('$current / $total',
-              style: const TextStyle(fontSize: 13, color: Color(0xFF64748b))),
+          Text(
+            '$current / $total',
+            style: const TextStyle(fontSize: 13, color: Color(0xFF64748b)),
+          ),
           const SizedBox(width: 8),
           SizedBox(
             width: 80,
@@ -159,8 +173,9 @@ class _Header extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: progress,
                 backgroundColor: const Color(0xFF1e1e2e),
-                valueColor:
-                    const AlwaysStoppedAnimation<Color>(Color(0xFF7c3aed)),
+                valueColor: const AlwaysStoppedAnimation<Color>(
+                  Color(0xFF7c3aed),
+                ),
                 minHeight: 4,
               ),
             ),
@@ -196,12 +211,25 @@ class _CardStack extends StatelessWidget {
         children: [
           for (int i = visible.length - 1; i >= 0; i--)
             Positioned(
-              top: i == 0 ? 0 : i == 1 ? 6.0 : 12.0,
-              left: 0, right: 0,
+              top: i == 0
+                  ? 0
+                  : i == 1
+                  ? 6.0
+                  : 12.0,
+              left: 0,
+              right: 0,
               child: Transform.scale(
-                scale: i == 0 ? 1.0 : i == 1 ? 0.97 : 0.94,
+                scale: i == 0
+                    ? 1.0
+                    : i == 1
+                    ? 0.97
+                    : 0.94,
                 child: Opacity(
-                  opacity: i == 0 ? 1.0 : i == 1 ? 0.75 : 0.5,
+                  opacity: i == 0
+                      ? 1.0
+                      : i == 1
+                      ? 0.75
+                      : 0.5,
                   child: i == 0
                       ? ProposalCardWidget(
                           card: visible[i],
@@ -231,7 +259,12 @@ class _SwipeHints extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         _Hint(label: '却下', icon: '✕', color: const Color(0xFFef4444)),
-        _Hint(label: '採用', icon: '✓', color: const Color(0xFF22c55e), reverse: true),
+        _Hint(
+          label: '採用',
+          icon: '✓',
+          color: const Color(0xFF22c55e),
+          reverse: true,
+        ),
       ],
     );
   }
@@ -242,21 +275,36 @@ class _Hint extends StatelessWidget {
   final String icon;
   final Color color;
   final bool reverse;
-  const _Hint({required this.label, required this.icon, required this.color, this.reverse = false});
+  const _Hint({
+    required this.label,
+    required this.icon,
+    required this.color,
+    this.reverse = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final children = [
       Container(
-        width: 36, height: 36,
+        width: 36,
+        height: 36,
         decoration: BoxDecoration(
           color: color.withAlpha(40),
           shape: BoxShape.circle,
         ),
-        child: Center(child: Text(icon, style: TextStyle(color: color, fontSize: 16))),
+        child: Center(
+          child: Text(icon, style: TextStyle(color: color, fontSize: 16)),
+        ),
       ),
       const SizedBox(width: 6),
-      Text(label, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600)),
+      Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     ];
     return Opacity(
       opacity: 0.5,
@@ -277,9 +325,19 @@ class _ActionButtons extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _CircleButton(icon: '✕', color: const Color(0xFFef4444), onTap: onReject, size: 64),
+          _CircleButton(
+            icon: '✕',
+            color: const Color(0xFFef4444),
+            onTap: onReject,
+            size: 64,
+          ),
           const SizedBox(width: 24),
-          _CircleButton(icon: '✓', color: const Color(0xFF22c55e), onTap: onAdopt, size: 64),
+          _CircleButton(
+            icon: '✓',
+            color: const Color(0xFF22c55e),
+            onTap: onAdopt,
+            size: 64,
+          ),
         ],
       ),
     );
@@ -291,20 +349,29 @@ class _CircleButton extends StatelessWidget {
   final Color color;
   final VoidCallback onTap;
   final double size;
-  const _CircleButton({required this.icon, required this.color, required this.onTap, required this.size});
+  const _CircleButton({
+    required this.icon,
+    required this.color,
+    required this.onTap,
+    required this.size,
+  });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: size, height: size,
+        width: size,
+        height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(color: color, width: 2),
         ),
         child: Center(
-          child: Text(icon, style: TextStyle(color: color, fontSize: size * 0.38)),
+          child: Text(
+            icon,
+            style: TextStyle(color: color, fontSize: size * 0.38),
+          ),
         ),
       ),
     );

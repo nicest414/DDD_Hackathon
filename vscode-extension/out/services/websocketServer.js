@@ -12,24 +12,52 @@ class DDDWebSocketServer {
         if (this.wss) {
             return;
         }
-        this.wss = new ws_1.WebSocketServer({ port });
+        try {
+            this.wss = new ws_1.WebSocketServer({ port });
+        }
+        catch (err) {
+            this.wss = null;
+            this.output.appendLine(`[DDD] Failed to start WebSocket server: ${this._errorMessage(err)}`);
+            return;
+        }
         this.output.appendLine(`[DDD] WebSocket server listening on ws://localhost:${port}`);
+        this.wss.on('error', (err) => {
+            this.output.appendLine(`[DDD] WebSocket server error: ${this._errorMessage(err)}`);
+            const server = this.wss;
+            this.wss = null;
+            this.client = null;
+            server?.close();
+        });
         this.wss.on('connection', (ws) => {
+            if (this.client &&
+                (this.client.readyState === ws_1.WebSocket.OPEN ||
+                    this.client.readyState === ws_1.WebSocket.CONNECTING)) {
+                this.client.close();
+            }
             this.client = ws;
             this.output.appendLine('[DDD] Flutter client connected');
             ws.on('message', (raw) => {
+                const payload = raw.toString();
                 try {
-                    const event = JSON.parse(raw.toString());
+                    const event = JSON.parse(payload);
                     this.output.appendLine(`[DDD] ← ${event.type}`);
                     this.onEvent?.(event);
                 }
-                catch {
-                    this.output.appendLine('[DDD] Received invalid JSON');
+                catch (err) {
+                    this.output.appendLine(`[DDD] Received invalid JSON: ${this._errorMessage(err)}; payload=${payload}`);
                 }
             });
             ws.on('close', () => {
-                this.client = null;
+                if (this.client === ws) {
+                    this.client = null;
+                }
                 this.output.appendLine('[DDD] Flutter client disconnected');
+            });
+            ws.on('error', (err) => {
+                if (this.client === ws) {
+                    this.client = null;
+                }
+                this.output.appendLine(`[DDD] Flutter client error: ${this._errorMessage(err)}`);
             });
         });
     }
@@ -46,6 +74,9 @@ class DDDWebSocketServer {
     }
     get isRunning() {
         return this.wss !== null;
+    }
+    _errorMessage(err) {
+        return err instanceof Error ? err.message : String(err);
     }
 }
 exports.DDDWebSocketServer = DDDWebSocketServer;

@@ -4,13 +4,35 @@ import { DecisionCard, Decision, GeneratedApp, Project } from '../models/types';
 
 export class AIAdapterError extends Error {}
 
+const cardTypes = new Set<DecisionCard['type']>(['concept', 'feature', 'ui', 'flow', 'data']);
+
+function requiredString(value: unknown, field: string): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new AIAdapterError(`AI response is missing required field: ${field}`);
+  }
+  return value.trim();
+}
+
+function optionalString(value: unknown, fallback: string): string {
+  return typeof value === 'string' ? value.trim() : fallback;
+}
+
+function coerceScore(value: unknown, fallback = 0.5): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) { return fallback; }
+  return Math.min(1, Math.max(0, numeric));
+}
+
 export class AIAdapter {
   private client(): OpenAI {
     const cfg = vscode.workspace.getConfiguration('ddd.ai');
-    const apiKey = process.env['DDD_API_KEY'] ?? '';
+    const apiKey = process.env['DDD_API_KEY'];
+    if (typeof apiKey !== 'string' || apiKey.trim().length === 0) {
+      throw new AIAdapterError('DDD_API_KEY environment variable is required');
+    }
     return new OpenAI({
       baseURL: cfg.get<string>('baseUrl'),
-      apiKey,
+      apiKey: apiKey.trim(),
       timeout: cfg.get<number>('timeoutMs') ?? 30000,
     });
   }
@@ -57,16 +79,26 @@ Only output JSON, no markdown.`;
       throw new AIAdapterError(`Invalid JSON from AI: ${text}`);
     }
 
+    const rawType = optionalString(parsed['type'], 'feature');
+    const type = cardTypes.has(rawType as DecisionCard['type'])
+      ? rawType as DecisionCard['type']
+      : 'feature';
+    const title = requiredString(parsed['title'], 'title');
+    const description = requiredString(parsed['description'], 'description');
+    const predictedReward = optionalString(parsed['predictedReward'], '');
+    const noveltyScore = coerceScore(parsed['noveltyScore']);
+    const effortScore = coerceScore(parsed['effortScore']);
+
     return {
       id: `ai-${Date.now()}`,
       projectId: project.id,
-      type: (parsed['type'] as DecisionCard['type']) ?? 'feature',
-      title: parsed['title'] as string,
-      description: parsed['description'] as string,
+      type,
+      title,
+      description,
       payload: {},
-      predictedReward: parsed['predictedReward'] as string ?? '',
-      noveltyScore: parsed['noveltyScore'] as number ?? 0.5,
-      effortScore: parsed['effortScore'] as number ?? 0.5,
+      predictedReward,
+      noveltyScore,
+      effortScore,
       status: 'pending',
     };
   }

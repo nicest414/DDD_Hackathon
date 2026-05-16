@@ -94,6 +94,23 @@ class DecisionStore {
       INSERT OR REPLACE INTO generated_apps VALUES (?,?,?,?,?,?,?,?,?)
     `).run(app.id, app.projectId, JSON.stringify(app.spec), app.source, JSON.stringify(app.previewState), app.repositoryUrl, app.branchName, app.pullRequestUrl, app.updatedAt);
     }
+    getGeneratedApp(projectId) {
+        const row = this.db?.prepare('SELECT * FROM generated_apps WHERE projectId = ?').get(projectId);
+        if (!row) {
+            return undefined;
+        }
+        return {
+            id: row.id,
+            projectId: row.projectId,
+            spec: JSON.parse(row.spec),
+            source: row.source,
+            previewState: JSON.parse(row.previewState),
+            repositoryUrl: row.repositoryUrl,
+            branchName: row.branchName,
+            pullRequestUrl: row.pullRequestUrl,
+            updatedAt: row.updatedAt,
+        };
+    }
 }
 exports.DecisionStore = DecisionStore;
 //# sourceMappingURL=decisionStore.js.map

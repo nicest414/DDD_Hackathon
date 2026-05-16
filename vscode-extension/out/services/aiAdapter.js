@@ -42,13 +42,33 @@ const openai_1 = __importDefault(require("openai"));
 class AIAdapterError extends Error {
 }
 exports.AIAdapterError = AIAdapterError;
+const cardTypes = new Set(['concept', 'feature', 'ui', 'flow', 'data']);
+function requiredString(value, field) {
+    if (typeof value !== 'string' || value.trim().length === 0) {
+        throw new AIAdapterError(`AI response is missing required field: ${field}`);
+    }
+    return value.trim();
+}
+function optionalString(value, fallback) {
+    return typeof value === 'string' ? value.trim() : fallback;
+}
+function coerceScore(value, fallback = 0.5) {
+    const numeric = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(numeric)) {
+        return fallback;
+    }
+    return Math.min(1, Math.max(0, numeric));
+}
 class AIAdapter {
     client() {
         const cfg = vscode.workspace.getConfiguration('ddd.ai');
-        const apiKey = process.env['DDD_API_KEY'] ?? '';
+        const apiKey = process.env['DDD_API_KEY'];
+        if (typeof apiKey !== 'string' || apiKey.trim().length === 0) {
+            throw new AIAdapterError('DDD_API_KEY environment variable is required');
+        }
         return new openai_1.default({
             baseURL: cfg.get('baseUrl'),
-            apiKey,
+            apiKey: apiKey.trim(),
             timeout: cfg.get('timeoutMs') ?? 30000,
         });
     }
@@ -86,16 +106,25 @@ Only output JSON, no markdown.`;
         catch {
             throw new AIAdapterError(`Invalid JSON from AI: ${text}`);
         }
+        const rawType = optionalString(parsed['type'], 'feature');
+        const type = cardTypes.has(rawType)
+            ? rawType
+            : 'feature';
+        const title = requiredString(parsed['title'], 'title');
+        const description = requiredString(parsed['description'], 'description');
+        const predictedReward = optionalString(parsed['predictedReward'], '');
+        const noveltyScore = coerceScore(parsed['noveltyScore']);
+        const effortScore = coerceScore(parsed['effortScore']);
         return {
             id: `ai-${Date.now()}`,
             projectId: project.id,
-            type: parsed['type'] ?? 'feature',
-            title: parsed['title'],
-            description: parsed['description'],
+            type,
+            title,
+            description,
             payload: {},
-            predictedReward: parsed['predictedReward'] ?? '',
-            noveltyScore: parsed['noveltyScore'] ?? 0.5,
-            effortScore: parsed['effortScore'] ?? 0.5,
+            predictedReward,
+            noveltyScore,
+            effortScore,
             status: 'pending',
         };
     }
