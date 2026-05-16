@@ -19,6 +19,18 @@ export class BuilderCortex {
   ) {}
 
   async handleSwipe(projectId: string, cardId: string, action: 'accepted' | 'rejected'): Promise<void> {
+    if (!this.projects.has(projectId)) {
+      this.output.appendLine(`[DDD] Swipe ignored: project ${projectId} not found`);
+      return;
+    }
+
+    const list = this.decisions.get(projectId) ?? [];
+    const projectCards = this.cards.get(projectId) ?? [];
+    if (!projectCards.find((card) => card.id === cardId)) {
+      this.output.appendLine(`[DDD] Swipe ignored: card ${cardId} not found for project ${projectId}`);
+      return;
+    }
+
     const decision: Decision = {
       id: `d-${Date.now()}`,
       cardId,
@@ -27,7 +39,6 @@ export class BuilderCortex {
       createdAt: new Date().toISOString(),
     };
 
-    const list = this.decisions.get(projectId) ?? [];
     list.push(decision);
     this.decisions.set(projectId, list);
     this.store.saveDecision(decision);
@@ -56,6 +67,7 @@ export class BuilderCortex {
 
     this.output.appendLine('[DDD] Generating app...');
     project.status = 'building';
+    this.store.saveProject(project);
 
     let app;
     try {
@@ -65,12 +77,16 @@ export class BuilderCortex {
         this.output.appendLine('[DDD] AI failed, using baseline');
         app = this.baseline.getMockApp(projectId);
       } else {
+        project.status = 'failed';
+        this.store.saveProject(project);
+        this.output.appendLine('[DDD] App generation failed, marking project failed');
         throw err;
       }
     }
 
     this.store.saveGeneratedApp(app);
     project.status = 'generated';
+    this.store.saveProject(project);
     this.output.appendLine('[DDD] App generated');
     return app;
   }

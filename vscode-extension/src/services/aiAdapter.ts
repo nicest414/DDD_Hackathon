@@ -24,11 +24,13 @@ function coerceScore(value: unknown, fallback = 0.5): number {
 }
 
 export class AIAdapter {
-  private client(): OpenAI {
+  constructor(private readonly context: vscode.ExtensionContext) {}
+
+  private async client(): Promise<OpenAI> {
     const cfg = vscode.workspace.getConfiguration('ddd.ai');
-    const apiKey = process.env['DDD_API_KEY'];
+    const apiKey = await this.context.secrets.get('ddd.apiKey');
     if (typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-      throw new AIAdapterError('DDD_API_KEY environment variable is required');
+      throw new AIAdapterError('DDD API key is required');
     }
     return new OpenAI({
       baseURL: cfg.get<string>('baseUrl'),
@@ -65,7 +67,8 @@ Suggest the next most important feature card in JSON:
 }
 Only output JSON, no markdown.`;
 
-    const res = await this.client().chat.completions.create({
+    const client = await this.client();
+    const res = await client.chat.completions.create({
       model,
       max_tokens: maxTokens,
       messages: [{ role: 'user', content: prompt }],
@@ -120,7 +123,8 @@ Return JSON:
 }
 Only output JSON.`;
 
-    const res = await this.client().chat.completions.create({
+    const client = await this.client();
+    const res = await client.chat.completions.create({
       model,
       messages: [{ role: 'user', content: prompt }],
     });

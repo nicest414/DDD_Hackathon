@@ -22,7 +22,7 @@ export function activate(context: vscode.ExtensionContext): void {
   store.init(storagePath);
 
   const ws = new DDDWebSocketServer(output);
-  const ai = new AIAdapter();
+  const ai = new AIAdapter(context);
   const baseline = new BaselineDopamine();
   server = ws;
   cortex = new BuilderCortex(ws, ai, baseline, store, output);
@@ -67,7 +67,6 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!apiKey) { return; }
 
       await context.secrets.store('ddd.apiKey', apiKey);
-      process.env['DDD_API_KEY'] = apiKey;
 
       const cfg = vscode.workspace.getConfiguration('ddd.ai');
       await cfg.update('baseUrl', baseUrl, vscode.ConfigurationTarget.Global);
@@ -116,7 +115,12 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.window.showErrorMessage('DDD: App generation failed.');
         return;
       }
-      const result = publisher.publish(app, decisions);
+      const repoPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!repoPath) {
+        vscode.window.showErrorMessage('DDD: No workspace folder open.');
+        return;
+      }
+      const result = await publisher.publish(app, decisions, repoPath);
 
       if (result.pullRequestUrl) {
         ws.send({ type: 'pr', repositoryUrl: result.repositoryUrl, branchName: result.branchName, url: result.pullRequestUrl });

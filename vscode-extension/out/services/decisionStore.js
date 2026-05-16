@@ -64,38 +64,51 @@ class DecisionStore {
       );
     `);
     }
+    assertInitialized() {
+        if (!this.db) {
+            throw new Error('DecisionStore has not been initialized');
+        }
+        return this.db;
+    }
     saveProject(p) {
-        this.db?.prepare(`
+        const db = this.assertInitialized();
+        db.prepare(`
       INSERT OR REPLACE INTO projects VALUES (?,?,?,?,?,?)
     `).run(p.id, p.title, p.initialPrompt, p.status, p.createdAt, p.updatedAt);
     }
     getProject(id) {
-        return this.db?.prepare('SELECT * FROM projects WHERE id = ?').get(id);
+        const db = this.assertInitialized();
+        return db.prepare('SELECT * FROM projects WHERE id = ?').get(id);
     }
     saveDecision(d) {
-        this.db?.prepare(`
+        const db = this.assertInitialized();
+        db.prepare(`
       INSERT OR REPLACE INTO decisions VALUES (?,?,?,?,?)
     `).run(d.id, d.cardId, d.action, d.reason, d.createdAt);
     }
     getDecisions(projectId) {
-        return this.db?.prepare(`
+        const db = this.assertInitialized();
+        return db.prepare(`
       SELECT d.* FROM decisions d
       JOIN decision_cards c ON c.id = d.cardId
       WHERE c.projectId = ?
-    `).all(projectId) ?? [];
+    `).all(projectId);
     }
     saveCard(c) {
-        this.db?.prepare(`
+        const db = this.assertInitialized();
+        db.prepare(`
       INSERT OR REPLACE INTO decision_cards VALUES (?,?,?,?,?,?,?,?,?,?)
     `).run(c.id, c.projectId, c.type, c.title, c.description, JSON.stringify(c.payload), c.predictedReward, c.noveltyScore, c.effortScore, c.status);
     }
     saveGeneratedApp(app) {
-        this.db?.prepare(`
+        const db = this.assertInitialized();
+        db.prepare(`
       INSERT OR REPLACE INTO generated_apps VALUES (?,?,?,?,?,?,?,?,?)
     `).run(app.id, app.projectId, JSON.stringify(app.spec), app.source, JSON.stringify(app.previewState), app.repositoryUrl, app.branchName, app.pullRequestUrl, app.updatedAt);
     }
     getGeneratedApp(projectId) {
-        const row = this.db?.prepare('SELECT * FROM generated_apps WHERE projectId = ?').get(projectId);
+        const db = this.assertInitialized();
+        const row = db.prepare('SELECT * FROM generated_apps WHERE projectId = ?').get(projectId);
         if (!row) {
             return undefined;
         }

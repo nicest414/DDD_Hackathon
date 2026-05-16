@@ -53,7 +53,7 @@ function activate(context) {
     fs.mkdirSync(storagePath, { recursive: true });
     store.init(storagePath);
     const ws = new websocketServer_1.DDDWebSocketServer(output);
-    const ai = new aiAdapter_1.AIAdapter();
+    const ai = new aiAdapter_1.AIAdapter(context);
     const baseline = new baselineDopamine_1.BaselineDopamine();
     server = ws;
     cortex = new builderCortex_1.BuilderCortex(ws, ai, baseline, store, output);
@@ -98,7 +98,6 @@ function activate(context) {
             return;
         }
         await context.secrets.store('ddd.apiKey', apiKey);
-        process.env['DDD_API_KEY'] = apiKey;
         const cfg = vscode.workspace.getConfiguration('ddd.ai');
         await cfg.update('baseUrl', baseUrl, vscode.ConfigurationTarget.Global);
         await cfg.update('model', model, vscode.ConfigurationTarget.Global);
@@ -135,7 +134,12 @@ function activate(context) {
             vscode.window.showErrorMessage('DDD: App generation failed.');
             return;
         }
-        const result = publisher.publish(app, decisions);
+        const repoPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!repoPath) {
+            vscode.window.showErrorMessage('DDD: No workspace folder open.');
+            return;
+        }
+        const result = await publisher.publish(app, decisions, repoPath);
         if (result.pullRequestUrl) {
             ws.send({ type: 'pr', repositoryUrl: result.repositoryUrl, branchName: result.branchName, url: result.pullRequestUrl });
             vscode.window.showInformationMessage(`DDD: PR created → ${result.pullRequestUrl}`);

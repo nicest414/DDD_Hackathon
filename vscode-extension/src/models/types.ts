@@ -2,7 +2,7 @@ export interface Project {
   id: string;
   title: string;
   initialPrompt: string;
-  status: 'draft' | 'building' | 'generated';
+  status: 'draft' | 'building' | 'generated' | 'failed';
   createdAt: string;
   updatedAt: string;
 }

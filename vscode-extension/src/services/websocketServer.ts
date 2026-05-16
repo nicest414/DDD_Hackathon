@@ -44,13 +44,22 @@ export class DDDWebSocketServer {
 
       ws.on('message', (raw) => {
         const payload = raw.toString();
+        let event: IncomingEvent;
         try {
-          const event = JSON.parse(payload) as IncomingEvent;
-          this.output.appendLine(`[DDD] ← ${event.type}`);
-          this.onEvent?.(event);
+          event = JSON.parse(payload) as IncomingEvent;
         } catch (err) {
           this.output.appendLine(
             `[DDD] Received invalid JSON: ${this._errorMessage(err)}; payload=${payload}`,
+          );
+          return;
+        }
+
+        this.output.appendLine(`[DDD] ← ${event.type}`);
+        try {
+          this.onEvent?.(event);
+        } catch (err) {
+          this.output.appendLine(
+            `[DDD] onEvent failed: ${this._errorMessage(err)}; eventType=${event.type}`,
           );
         }
       });

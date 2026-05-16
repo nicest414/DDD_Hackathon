@@ -1,7 +1,13 @@
-import { execFileSync } from 'child_process';
+import { execFile } from 'child_process';
 import { createHash } from 'crypto';
-import * as fs from 'fs';
+import { promises as fs } from 'fs';
+import * as path from 'path';
+import { promisify } from 'util';
 import { GeneratedApp, Decision } from '../models/types';
+
+const execFileAsync = promisify(execFile);
+const GIT_TIMEOUT_MS = 30_000;
+const GH_TIMEOUT_MS = 30_000;
 
 export interface PublishResult {
   repositoryUrl: string;
@@ -10,23 +16,26 @@ export interface PublishResult {
 }
 
 export class GitHubPublisher {
-  publish(app: GeneratedApp, decisions: Decision[]): PublishResult {
+  async publish(app: GeneratedApp, decisions: Decision[], repoPath: string): Promise<PublishResult> {
     const safeProjectId = this._safeToken(app.projectId);
     const branch = `ddd/${safeProjectId}`;
+    const specPath = path.join(repoPath, 'ddd-spec.json');
+    const decisionsPath = path.join(repoPath, 'ddd-decisions.json');
+    const originalBranch = await this._currentBranch(repoPath);
 
     try {
-      execFileSync('git', ['checkout', '-b', branch], { stdio: 'pipe', shell: false });
+      await execFileAsync('git', ['checkout', '-b', branch], { cwd: repoPath, timeout: GIT_TIMEOUT_MS, shell: false });
 
       // Write spec and decisions JSON
-      fs.writeFileSync('ddd-spec.json', JSON.stringify(app.spec, null, 2));
-      fs.writeFileSync('ddd-decisions.json', JSON.stringify(decisions, null, 2));
+      await fs.writeFile(specPath, JSON.stringify(app.spec, null, 2));
+      await fs.writeFile(decisionsPath, JSON.stringify(decisions, null, 2));
 
-      execFileSync('git', ['add', 'ddd-spec.json', 'ddd-decisions.json'], { stdio: 'pipe', shell: false });
-      execFileSync('git', ['commit', '-m', 'chore: DDD generated app'], { stdio: 'pipe', shell: false });
-      execFileSync('git', ['push', '-u', 'origin', branch], { stdio: 'pipe', shell: false });
+      await execFileAsync('git', ['add', specPath, decisionsPath], { cwd: repoPath, timeout: GIT_TIMEOUT_MS, shell: false });
+      await execFileAsync('git', ['commit', '-m', 'chore: DDD generated app'], { cwd: repoPath, timeout: GIT_TIMEOUT_MS, shell: false });
+      await execFileAsync('git', ['push', '-u', 'origin', branch], { cwd: repoPath, timeout: GIT_TIMEOUT_MS, shell: false });
 
       const titleName = typeof app.spec['name'] === 'string' ? app.spec['name'] : app.projectId;
-      const prUrl = execFileSync(
+      const { stdout } = await execFileAsync(
         'gh',
         [
           'pr',
@@ -38,26 +47,54 @@ export class GitHubPublisher {
           '--head',
           branch,
         ],
-        { stdio: 'pipe', shell: false },
-      ).toString().trim();
+        { cwd: repoPath, timeout: GH_TIMEOUT_MS, shell: false },
+      );
+      const prUrl = stdout.trim();
 
       return {
-        repositoryUrl: this._repoUrl(),
+        repositoryUrl: await this._repoUrl(repoPath),
         branchName: branch,
         pullRequestUrl: prUrl,
       };
     } catch (err) {
+      console.error('DDD: GitHub publish failed', err);
       // GitHub step failed — return partial result so local state is preserved
       return { repositoryUrl: '', branchName: branch, pullRequestUrl: '' };
+    } finally {
+      if (originalBranch) {
+        try {
+          await execFileAsync('git', ['checkout', originalBranch], { cwd: repoPath, timeout: GIT_TIMEOUT_MS, shell: false });
+        } catch (err) {
+          console.error('DDD: Git branch restore failed', err);
+        }
+      }
     }
   }
 
-  private _repoUrl(): string {
+  private async _currentBranch(repoPath: string): Promise<string> {
     try {
-      return execFileSync('gh', ['repo', 'view', '--json', 'url', '-q', '.url'], { stdio: 'pipe', shell: false })
-        .toString()
-        .trim();
-    } catch {
+      const { stdout } = await execFileAsync(
+        'git',
+        ['rev-parse', '--abbrev-ref', 'HEAD'],
+        { cwd: repoPath, timeout: GIT_TIMEOUT_MS, shell: false },
+      );
+      return stdout.trim();
+    } catch (err) {
+      console.error('DDD: Git current branch lookup failed', err);
+      return '';
+    }
+  }
+
+  private async _repoUrl(repoPath: string): Promise<string> {
+    try {
+      const { stdout } = await execFileAsync(
+        'gh',
+        ['repo', 'view', '--json', 'url', '-q', '.url'],
+        { cwd: repoPath, timeout: GH_TIMEOUT_MS, shell: false },
+      );
+      return stdout.trim();
+    } catch (err) {
+      console.error('DDD: GitHub repository URL lookup failed', err);
       return '';
     }
   }
