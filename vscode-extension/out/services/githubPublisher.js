@@ -118,7 +118,7 @@ class GitHubPublisher {
     }
     _safeToken(value) {
         const sanitized = value.replace(/[^A-Za-z0-9_-]/g, '-');
-        if (sanitized.length > 0) {
+        if (/[A-Za-z0-9_]/.test(sanitized)) {
             return sanitized;
         }
         const suffix = (0, crypto_1.createHash)('sha1').update(value).digest('hex').slice(0, 8);

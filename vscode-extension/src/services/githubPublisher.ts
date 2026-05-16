@@ -105,7 +105,7 @@ export class GitHubPublisher {
 
   private _safeToken(value: string): string {
     const sanitized = value.replace(/[^A-Za-z0-9_-]/g, '-');
-    if (sanitized.length > 0) {
+    if (/[A-Za-z0-9_]/.test(sanitized)) {
       return sanitized;
     }
 
