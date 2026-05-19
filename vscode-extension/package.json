@@ -3,37 +3,81 @@
   "displayName": "DDD - Builder Cortex",
   "description": "Dopamine Driven Development: PC-side code generation and GitHub integration",
   "version": "0.0.1",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Other"],
-  "activationEvents": ["onStartupFinished"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
-      { "command": "ddd.configureAI",     "title": "DDD: Configure AI Provider" },
-      { "command": "ddd.startSession",    "title": "DDD: Start Session" },
-      { "command": "ddd.generateApp",     "title": "DDD: Generate App" },
-      { "command": "ddd.openPreview",     "title": "DDD: Open Preview" },
-      { "command": "ddd.publishToGitHub", "title": "DDD: Publish to GitHub" }
+      {
+        "command": "ddd.configureAI",
+        "title": "DDD: Configure AI Provider"
+      },
+      {
+        "command": "ddd.startSession",
+        "title": "DDD: Start Session"
+      },
+      {
+        "command": "ddd.generateApp",
+        "title": "DDD: Generate App"
+      },
+      {
+        "command": "ddd.openPreview",
+        "title": "DDD: Open Preview"
+      },
+      {
+        "command": "ddd.publishToGitHub",
+        "title": "DDD: Publish to GitHub"
+      }
     ],
     "configuration": {
       "title": "DDD Builder Cortex",
       "properties": {
-        "ddd.ai.provider":         { "type": "string",  "default": "openai-compatible", "description": "AI provider type" },
-        "ddd.ai.baseUrl":          { "type": "string",  "default": "https://api.openai.com/v1", "description": "AI API base URL" },
-        "ddd.ai.model":            { "type": "string",  "default": "gpt-4o-mini", "description": "Model name" },
-        "ddd.ai.timeoutMs":        { "type": "number",  "default": 30000, "description": "Request timeout (ms)" },
-        "ddd.ai.maxTokens":        { "type": "number",  "default": 2000,  "description": "Max tokens per generation" },
-        "ddd.ai.fallbackEnabled":  { "type": "boolean", "default": true,  "description": "Fall back to mock data when AI fails" }
+        "ddd.ai.provider": {
+          "type": "string",
+          "default": "openai-compatible",
+          "description": "AI provider type"
+        },
+        "ddd.ai.baseUrl": {
+          "type": "string",
+          "default": "https://api.openai.com/v1",
+          "description": "AI API base URL"
+        },
+        "ddd.ai.model": {
+          "type": "string",
+          "default": "gpt-4o-mini",
+          "description": "Model name"
+        },
+        "ddd.ai.timeoutMs": {
+          "type": "number",
+          "default": 30000,
+          "description": "Request timeout (ms)"
+        },
+        "ddd.ai.maxTokens": {
+          "type": "number",
+          "default": 2000,
+          "description": "Max tokens per generation"
+        },
+        "ddd.ai.fallbackEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Fall back to mock data when AI fails"
+        }
       }
     }
   },
   "dependencies": {
-    "better-sqlite3": "^12.10.0",
+    "@electric-sql/pglite": "^0.4.5",
     "openai": "^4.67.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
     "@types/ws": "^8.5.12",
@@ -41,7 +85,6 @@
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "rebuild:vscode-native": "npm_config_runtime=electron npm_config_target=39.8.8 npm_config_disturl=https://electronjs.org/headers npm_config_build_from_source=true npm rebuild better-sqlite3 --build-from-source"
+    "watch": "tsc -watch -p ./"
   }
 }
