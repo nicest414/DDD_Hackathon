@@ -206,7 +206,13 @@ export class DecisionStore {
         'SELECT project_id FROM decision_cards WHERE id = $1',
         [decision.cardId],
       );
-      projectId = card.rows[0]?.project_id ?? '';
+      const cardProjectId = card.rows[0]?.project_id;
+      if (!cardProjectId) {
+        throw new Error(
+          `Unable to save decision: projectId could not be resolved for decision.cardId=${decision.cardId}, decision.id=${decision.id}, decision.projectId=${decision.projectId}`,
+        );
+      }
+      projectId = cardProjectId;
     }
 
     await this.assertInitialized().query(

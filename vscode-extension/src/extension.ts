@@ -106,11 +106,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showErrorMessage('DDD: No active project.');
         return;
       }
+      const projectId = currentProjectId;
       const publisher = new GitHubPublisher();
-      const decisions = await store!.getDecisions(currentProjectId);
-      let app = await store!.getGeneratedApp(currentProjectId);
+      const decisions = await store!.getDecisions(projectId);
+      let app = await store!.getGeneratedApp(projectId);
       if (!app) {
-        app = await cortex!.generateApp(currentProjectId);
+        app = await cortex!.generateApp(projectId);
       }
       if (!app) {
         vscode.window.showErrorMessage('DDD: App generation failed.');
@@ -126,7 +127,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (result.pullRequestUrl) {
         ws.send({
           type: 'pr',
-          projectId: currentProjectId,
+          projectId,
           repositoryUrl: result.repositoryUrl,
           branchName: result.branchName,
           url: result.pullRequestUrl,
@@ -136,7 +137,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       } else {
         ws.send({
           type: 'pr',
-          projectId: currentProjectId,
+          projectId,
           repositoryUrl: '',
           branchName: result.branchName,
           url: '',
