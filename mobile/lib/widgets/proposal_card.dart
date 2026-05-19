@@ -147,14 +147,16 @@ class _CardBody extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  Text(
-                    card.predictedReward,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF94a3b8),
-                      height: 1.5,
+                  if (card.predictedReward.isNotEmpty) ...[
+                    Text(
+                      card.predictedReward,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF94a3b8),
+                        height: 1.5,
+                      ),
                     ),
-                  ),
+                  ],
                   if (card.payoff.isNotEmpty) ...[
                     const SizedBox(height: 6),
                     Text(

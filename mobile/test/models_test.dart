@@ -78,18 +78,46 @@ void main() {
     });
   });
 
+  test('Decision preserves supported createdAt input types from JSON', () {
+    final dateTime = DateTime.parse('2026-05-19T10:00:10.000Z');
+    final milliseconds = dateTime.millisecondsSinceEpoch;
+
+    Decision decisionWith(Object? createdAt) => Decision.fromJson({
+      'id': 'decision-1',
+      'projectId': 'project-1',
+      'cardId': 'card-1',
+      'action': 'accepted',
+      'createdAt': createdAt,
+    });
+
+    expect(decisionWith(dateTime).createdAt, dateTime);
+    expect(decisionWith(dateTime.toIso8601String()).createdAt, dateTime);
+    expect(
+      decisionWith(milliseconds).createdAt,
+      DateTime.fromMillisecondsSinceEpoch(milliseconds),
+    );
+    expect(
+      decisionWith(milliseconds.toDouble()).createdAt,
+      DateTime.fromMillisecondsSinceEpoch(milliseconds),
+    );
+  });
+
   test('Project accepts failed status and falls back for unknown status', () {
+    final createdAt = DateTime.parse('2026-05-19T10:00:00.000Z');
+    final updatedAt = DateTime.parse('2026-05-19T10:00:10.000Z');
     final failed = Project.fromJson({
       'id': 'project-1',
       'title': 'Demo',
       'initialPrompt': 'Build it',
       'status': 'failed',
-      'createdAt': '2026-05-19T10:00:00.000Z',
-      'updatedAt': '2026-05-19T10:00:00.000Z',
+      'createdAt': createdAt,
+      'updatedAt': updatedAt.toIso8601String(),
     });
     final unknown = Project.fromJson({'status': 'unknown'});
 
     expect(failed.status, 'failed');
+    expect(failed.createdAt, createdAt);
+    expect(failed.updatedAt, updatedAt);
     expect(unknown.status, 'draft');
   });
 }

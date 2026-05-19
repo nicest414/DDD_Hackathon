@@ -51,6 +51,9 @@ class Project {
   }
 
   static DateTime _dateTime(Object? value) {
+    if (value is DateTime) {
+      return value;
+    }
     if (value is String) {
       return DateTime.tryParse(value) ?? DateTime.now();
     }

@@ -50,8 +50,14 @@ class Decision {
   }
 
   static DateTime _dateTime(Object? value) {
+    if (value is DateTime) {
+      return value;
+    }
     if (value is String) {
       return DateTime.tryParse(value) ?? DateTime.now();
+    }
+    if (value is num) {
+      return DateTime.fromMillisecondsSinceEpoch(value.toInt());
     }
     return DateTime.now();
   }
