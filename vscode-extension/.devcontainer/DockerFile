@@ -1,0 +1,6 @@
+# Node.js 20が最初から入っている公式イメージ
+FROM mcr.microsoft.com/devcontainers/typescript-node:20
+
+# SQLiteなどのコンパイルに必要なC++ツールとPythonを入れておく
+RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+    && apt-get -y install build-essential python3

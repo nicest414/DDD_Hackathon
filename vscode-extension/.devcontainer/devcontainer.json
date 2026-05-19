@@ -1,0 +1,15 @@
+{
+  "name": "DDD Builder Cortex",
+  "build": {
+    "dockerfile": "DockerFile"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint"
+      ]
+    }
+  },
+  // コンテナ起動後に自動でnpm installを実行する場合
+  "postCreateCommand": "npm install"
+}
