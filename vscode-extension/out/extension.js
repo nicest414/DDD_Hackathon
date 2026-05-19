@@ -125,11 +125,12 @@ async function activate(context) {
             vscode.window.showErrorMessage('DDD: No active project.');
             return;
         }
+        const projectId = currentProjectId;
         const publisher = new githubPublisher_1.GitHubPublisher();
-        const decisions = await store.getDecisions(currentProjectId);
-        let app = await store.getGeneratedApp(currentProjectId);
+        const decisions = await store.getDecisions(projectId);
+        let app = await store.getGeneratedApp(projectId);
         if (!app) {
-            app = await cortex.generateApp(currentProjectId);
+            app = await cortex.generateApp(projectId);
         }
         if (!app) {
             vscode.window.showErrorMessage('DDD: App generation failed.');
@@ -142,10 +143,25 @@ async function activate(context) {
         }
         const result = await publisher.publish(app, decisions, repoPath);
         if (result.pullRequestUrl) {
-            ws.send({ type: 'pr', repositoryUrl: result.repositoryUrl, branchName: result.branchName, url: result.pullRequestUrl });
+            ws.send({
+                type: 'pr',
+                projectId,
+                repositoryUrl: result.repositoryUrl,
+                branchName: result.branchName,
+                url: result.pullRequestUrl,
+                status: 'created',
+            });
             vscode.window.showInformationMessage(`DDD: PR created → ${result.pullRequestUrl}`);
         }
         else {
+            ws.send({
+                type: 'pr',
+                projectId,
+                repositoryUrl: '',
+                branchName: result.branchName,
+                url: '',
+                status: 'localSaved',
+            });
             vscode.window.showWarningMessage('DDD: GitHub push failed. Local files saved.');
         }
     }));

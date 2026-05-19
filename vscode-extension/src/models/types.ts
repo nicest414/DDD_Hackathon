@@ -7,23 +7,44 @@ export interface Project {
   updatedAt: string;
 }
 
+export type DecisionCardType =
+  | 'concept'
+  | 'feature'
+  | 'ui'
+  | 'flow'
+  | 'data'
+  | 'moment'
+  | 'reward'
+  | 'polish'
+  | 'risk';
+
+export type DecisionCardStatus = 'pending' | 'accepted' | 'rejected';
+
 export interface DecisionCard {
   id: string;
   projectId: string;
-  type: 'concept' | 'feature' | 'ui' | 'flow' | 'data';
+  type: DecisionCardType;
   title: string;
+  hook: string;
   description: string;
+  payoff: string;
+  acceptLabel: string;
+  rejectLabel: string;
   payload: Record<string, unknown>;
   predictedReward: string;
   noveltyScore: number;
   effortScore: number;
-  status: 'pending' | 'accepted' | 'rejected';
+  dopamineScore: number;
+  status: DecisionCardStatus;
 }
+
+export type DecisionAction = 'accepted' | 'rejected';
 
 export interface Decision {
   id: string;
+  projectId: string;
   cardId: string;
-  action: 'accepted' | 'rejected';
+  action: DecisionAction;
   reason: string;
   createdAt: string;
 }
@@ -51,11 +72,23 @@ export interface AIProviderConfig {
 }
 
 // WebSocket event types
+export type ErrorCode =
+  | 'INVALID_EVENT'
+  | 'PROJECT_NOT_FOUND'
+  | 'CARD_NOT_FOUND'
+  | 'AI_RUNTIME_UNAVAILABLE'
+  | 'AI_RESPONSE_INVALID'
+  | 'GITHUB_UNAVAILABLE'
+  | 'PREVIEW_FAILED'
+  | 'UNKNOWN_ERROR';
+
+export type PRStatus = 'created' | 'localSaved';
+
 export interface SwipeEvent {
   type: 'swipe';
   projectId: string;
   cardId: string;
-  action: 'accepted' | 'rejected';
+  action: DecisionAction;
   createdAt: string;
 }
 
@@ -71,15 +104,26 @@ export interface CardEvent {
 
 export interface PreviewEvent {
   type: 'preview';
+  projectId: string;
   url: string;
 }
 
 export interface PREvent {
   type: 'pr';
+  projectId: string;
   repositoryUrl: string;
   branchName: string;
   url: string;
+  status: PRStatus;
+}
+
+export interface ErrorEvent {
+  type: 'error';
+  projectId?: string;
+  code: ErrorCode;
+  message: string;
+  recoverable: boolean;
 }
 
 export type IncomingEvent = SwipeEvent | StartSessionEvent;
-export type OutgoingEvent = CardEvent | PreviewEvent | PREvent;
+export type OutgoingEvent = CardEvent | PreviewEvent | PREvent | ErrorEvent;

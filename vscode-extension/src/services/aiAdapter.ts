@@ -4,7 +4,17 @@ import { DecisionCard, Decision, GeneratedApp, Project } from '../models/types';
 
 export class AIAdapterError extends Error {}
 
-const cardTypes = new Set<DecisionCard['type']>(['concept', 'feature', 'ui', 'flow', 'data']);
+const cardTypes = new Set<DecisionCard['type']>([
+  'concept',
+  'feature',
+  'ui',
+  'flow',
+  'data',
+  'moment',
+  'reward',
+  'polish',
+  'risk',
+]);
 
 function requiredString(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.trim().length === 0) {
@@ -58,12 +68,17 @@ Rejected features: ${rejected.map((c) => c.title).join(', ') || 'none'}
 
 Suggest the next most important feature card in JSON:
 {
-  "type": "feature",
+  "type": "moment",
   "title": "...",
+  "hook": "...",
   "description": "...",
+  "payoff": "...",
+  "acceptLabel": "...",
+  "rejectLabel": "...",
   "predictedReward": "...",
   "noveltyScore": 0.0-1.0,
-  "effortScore": 0.0-1.0
+  "effortScore": 0.0-1.0,
+  "dopamineScore": 0.0-1.0
 }
 Only output JSON, no markdown.`;
 
@@ -89,19 +104,29 @@ Only output JSON, no markdown.`;
     const title = requiredString(parsed['title'], 'title');
     const description = requiredString(parsed['description'], 'description');
     const predictedReward = optionalString(parsed['predictedReward'], '');
+    const hook = optionalString(parsed['hook'], title) || title;
+    const payoff = optionalString(parsed['payoff'], predictedReward || description) || predictedReward || description;
+    const acceptLabel = optionalString(parsed['acceptLabel'], 'これ欲しい') || 'これ欲しい';
+    const rejectLabel = optionalString(parsed['rejectLabel'], '今はいらない') || '今はいらない';
     const noveltyScore = coerceScore(parsed['noveltyScore']);
     const effortScore = coerceScore(parsed['effortScore']);
+    const dopamineScore = coerceScore(parsed['dopamineScore']);
 
     return {
       id: `ai-${Date.now()}`,
       projectId: project.id,
       type,
       title,
+      hook,
       description,
+      payoff,
+      acceptLabel,
+      rejectLabel,
       payload: {},
       predictedReward,
       noveltyScore,
       effortScore,
+      dopamineScore,
       status: 'pending',
     };
   }

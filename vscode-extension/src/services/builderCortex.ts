@@ -33,6 +33,7 @@ export class BuilderCortex {
 
     const decision: Decision = {
       id: `d-${Date.now()}`,
+      projectId,
       cardId,
       action,
       reason: '',
