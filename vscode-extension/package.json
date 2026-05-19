@@ -28,7 +28,7 @@
     }
   },
   "dependencies": {
-    "better-sqlite3": "^9.6.0",
+    "better-sqlite3": "^12.10.0",
     "openai": "^4.67.0",
     "ws": "^8.18.0"
   },
@@ -41,6 +41,7 @@
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "rebuild:vscode-native": "npm_config_runtime=electron npm_config_target=39.8.8 npm_config_disturl=https://electronjs.org/headers npm_config_build_from_source=true npm rebuild better-sqlite3 --build-from-source"
   }
 }
