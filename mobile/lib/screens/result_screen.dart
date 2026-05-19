@@ -55,8 +55,8 @@ class _ResultScreenState extends State<ResultScreen> {
       widget.decisions.where((d) => d.action == 'rejected').toList();
 
   bool _belongsToProject(Map<String, dynamic> msg) {
-    final projectId = msg['projectId'] as String?;
-    return projectId == null || projectId == widget.project.id;
+    final projectId = msg['projectId'];
+    return projectId is String && projectId == widget.project.id;
   }
 
   DecisionCard _cardFor(Decision d) => widget.cards.firstWhere(
@@ -281,21 +281,35 @@ class ResultEventSummary {
     switch (msg['type']) {
       case 'preview':
         return _copyWith(
-          previewUrl: msg['url'] as String? ?? '',
+          previewUrl: _stringValue(msg, 'url'),
           errorMessage: '',
         );
       case 'pr':
         return _copyWith(
-          prUrl: msg['url'] as String? ?? '',
-          prStatus: msg['status'] as String? ?? '',
-          branchName: msg['branchName'] as String? ?? '',
+          prUrl: _stringValue(msg, 'url'),
+          prStatus: _stringValue(msg, 'status'),
+          branchName: _stringValue(msg, 'branchName'),
           errorMessage: '',
         );
       case 'error':
-        return _copyWith(errorMessage: msg['message'] as String? ?? '不明なエラー');
+        return _copyWith(
+          errorMessage: _stringValue(msg, 'message', fallback: '不明なエラー'),
+        );
       default:
         return this;
     }
+  }
+
+  String _stringValue(
+    Map<String, dynamic> msg,
+    String key, {
+    String fallback = '',
+  }) {
+    final value = msg[key];
+    if (value == null) {
+      return fallback;
+    }
+    return value is String ? value : value.toString();
   }
 
   ResultEventSummary _copyWith({

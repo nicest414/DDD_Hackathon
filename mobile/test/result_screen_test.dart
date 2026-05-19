@@ -131,5 +131,42 @@ void main() {
       expect(summary.hasError, isTrue);
       expect(summary.errorMessage, '不明なエラー');
     });
+
+    test('coerces malformed string fields without throwing', () {
+      var summary = const ResultEventSummary();
+
+      expect(
+        () => summary = summary.apply({
+          'type': 'preview',
+          'projectId': 'project-1',
+          'url': 5173,
+        }),
+        returnsNormally,
+      );
+      expect(summary.previewUrl, '5173');
+
+      expect(
+        () => summary = summary.apply({
+          'type': 'pr',
+          'projectId': 'project-1',
+          'branchName': 1,
+          'url': true,
+          'status': 'created',
+        }),
+        returnsNormally,
+      );
+      expect(summary.branchName, '1');
+      expect(summary.prUrl, 'true');
+
+      expect(
+        () => summary = summary.apply({
+          'type': 'error',
+          'projectId': 'project-1',
+          'message': 500,
+        }),
+        returnsNormally,
+      );
+      expect(summary.errorMessage, '500');
+    });
   });
 }
