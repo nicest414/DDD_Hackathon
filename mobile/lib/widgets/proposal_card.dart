@@ -77,11 +77,13 @@ class _CardBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = _typeColors(card.type);
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
         color: const Color(0xFF1a1a2e),
-        border: Border.all(color: const Color(0xFF2a2a3e), width: 1.5),
+        border: Border.all(color: colors.accent.withAlpha(130), width: 1.5),
         borderRadius: BorderRadius.circular(24),
       ),
       padding: const EdgeInsets.all(24),
@@ -90,17 +92,26 @@ class _CardBody extends StatelessWidget {
         children: [
           Row(
             children: [
-              _CategoryBadge(card.type),
+              _CategoryBadge(type: card.type, colors: colors),
               const SizedBox(width: 8),
-              Text(
-                '#${card.id}',
-                style: const TextStyle(fontSize: 12, color: Color(0xFF64748b)),
+              Expanded(
+                child: Text(
+                  '#${card.id}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF64748b),
+                  ),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 16),
           Text(
             card.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 18,
               color: Color(0xFF94a3b8),
@@ -110,6 +121,8 @@ class _CardBody extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             card.hook,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w800,
@@ -118,20 +131,26 @@ class _CardBody extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Expanded(
-            child: Text(
-              card.description,
-              style: const TextStyle(
-                fontSize: 15,
-                color: Color(0xFF94a3b8),
-                height: 1.65,
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Text(
+                card.description,
+                style: const TextStyle(
+                  fontSize: 15,
+                  color: Color(0xFF94a3b8),
+                  height: 1.65,
+                ),
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          _ScoreStrip(card: card, accent: colors.accent),
+          const SizedBox(height: 12),
           if (card.payoff.isNotEmpty || card.predictedReward.isNotEmpty) ...[
             Container(
               decoration: BoxDecoration(
                 color: Colors.white.withAlpha(10),
-                border: Border.all(color: const Color(0xFF2a2a3e)),
+                border: Border.all(color: colors.accent.withAlpha(70)),
                 borderRadius: BorderRadius.circular(12),
               ),
               padding: const EdgeInsets.all(14),
@@ -150,6 +169,8 @@ class _CardBody extends StatelessWidget {
                   if (card.predictedReward.isNotEmpty) ...[
                     Text(
                       card.predictedReward,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 13,
                         color: Color(0xFF94a3b8),
@@ -161,6 +182,8 @@ class _CardBody extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       card.payoff,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 13,
                         color: Color(0xFFcbd5e1),
@@ -180,27 +203,153 @@ class _CardBody extends StatelessWidget {
 
 class _CategoryBadge extends StatelessWidget {
   final String type;
-  const _CategoryBadge(this.type);
+  final _CardTypeColors colors;
+  const _CategoryBadge({required this.type, required this.colors});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF7c3aed).withAlpha(50),
-        border: Border.all(color: const Color(0xFF7c3aed).withAlpha(80)),
+        color: colors.background,
+        border: Border.all(color: colors.accent.withAlpha(100)),
         borderRadius: BorderRadius.circular(20),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Text(
         type,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
-          color: Color(0xFFa855f7),
+          color: colors.accent,
         ),
       ),
     );
   }
+}
+
+class _ScoreStrip extends StatelessWidget {
+  final DecisionCard card;
+  final Color accent;
+  const _ScoreStrip({required this.card, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _ScoreMeter(
+            label: '快感',
+            value: card.dopamineScore,
+            color: accent,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _ScoreMeter(
+            label: '新規性',
+            value: card.noveltyScore,
+            color: const Color(0xFF38bdf8),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _ScoreMeter(
+            label: '軽さ',
+            value: 1 - card.effortScore,
+            color: const Color(0xFF22c55e),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ScoreMeter extends StatelessWidget {
+  final String label;
+  final double value;
+  final Color color;
+  const _ScoreMeter({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final percent = (value.clamp(0.0, 1.0) * 100).round();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withAlpha(8),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF94a3b8),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Text(
+                '$percent',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: color,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: value.clamp(0.0, 1.0),
+              minHeight: 4,
+              backgroundColor: const Color(0xFF2a2a3e),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CardTypeColors {
+  final Color accent;
+  final Color background;
+
+  const _CardTypeColors({required this.accent, required this.background});
+}
+
+_CardTypeColors _typeColors(String type) {
+  final accent = switch (type) {
+    'concept' => const Color(0xFFf59e0b),
+    'feature' => const Color(0xFF38bdf8),
+    'ui' => const Color(0xFFec4899),
+    'flow' => const Color(0xFF14b8a6),
+    'data' => const Color(0xFF60a5fa),
+    'moment' => const Color(0xFFf97316),
+    'reward' => const Color(0xFF22c55e),
+    'polish' => const Color(0xFFa855f7),
+    'risk' => const Color(0xFFef4444),
+    _ => const Color(0xFF94a3b8),
+  };
+
+  return _CardTypeColors(accent: accent, background: accent.withAlpha(35));
 }
 
 class _Stamp extends StatelessWidget {
@@ -225,6 +374,8 @@ class _Stamp extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: Text(
           label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: color,
             fontSize: 24,
