@@ -54,13 +54,18 @@ class _ResultScreenState extends State<ResultScreen> {
     orElse: () => DecisionCard(
       id: d.cardId,
       projectId: '',
-      type: '',
+      type: 'feature',
       title: d.cardId,
+      hook: d.cardId,
       description: '',
+      payoff: '',
+      acceptLabel: 'これ欲しい',
+      rejectLabel: '今はいらない',
       payload: {},
       predictedReward: '',
       noveltyScore: 0,
       effortScore: 0,
+      dopamineScore: 0,
     ),
   );
 
