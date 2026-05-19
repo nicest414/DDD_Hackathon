@@ -135,6 +135,19 @@ export class DecisionStore {
       WHERE decisions.card_id = decision_cards.id
         AND decisions.project_id = '';
     `);
+
+    await db.exec(`
+      UPDATE decision_cards
+      SET hook = title
+      WHERE hook = '';
+
+      UPDATE decision_cards
+      SET payoff = CASE
+        WHEN predicted_reward <> '' THEN predicted_reward
+        ELSE description
+      END
+      WHERE payoff = '';
+    `);
   }
 
   private async importLegacyJson(filePath: string): Promise<void> {
@@ -226,6 +239,14 @@ export class DecisionStore {
          created_at = EXCLUDED.created_at`,
       [decision.id, projectId, decision.cardId, decision.action, decision.reason, decision.createdAt],
     );
+
+    await this.assertInitialized().query(
+      `UPDATE decision_cards
+       SET status = $1
+       WHERE id = $2
+         AND project_id = $3`,
+      [decision.action, decision.cardId, projectId],
+    );
   }
 
   async getDecisions(projectId: string): Promise<Decision[]> {
@@ -300,6 +321,54 @@ export class DecisionStore {
         card.status,
       ],
     );
+  }
+
+  async getCards(projectId: string): Promise<DecisionCard[]> {
+    const result = await this.assertInitialized().query<{
+      id: string;
+      project_id: string;
+      type: DecisionCard['type'];
+      title: string;
+      hook: string;
+      description: string;
+      payoff: string;
+      accept_label: string;
+      reject_label: string;
+      payload: unknown;
+      predicted_reward: string;
+      novelty_score: number;
+      effort_score: number;
+      dopamine_score: number;
+      status: DecisionCard['status'];
+    }>(
+      `SELECT *
+       FROM decision_cards
+       WHERE project_id = $1
+       ORDER BY id ASC`,
+      [projectId],
+    );
+
+    return result.rows.map((row) => {
+      const predictedReward = stringOrFallback(row.predicted_reward, '');
+      const description = stringOrFallback(row.description, '');
+      return {
+        id: row.id,
+        projectId: row.project_id,
+        type: row.type,
+        title: row.title,
+        hook: stringOrFallback(row.hook, row.title),
+        description,
+        payoff: stringOrFallback(row.payoff, predictedReward || description),
+        acceptLabel: stringOrFallback(row.accept_label, 'これ欲しい'),
+        rejectLabel: stringOrFallback(row.reject_label, '今はいらない'),
+        payload: parseJsonRecord(row.payload),
+        predictedReward,
+        noveltyScore: numberOrFallback(row.novelty_score, 0.5),
+        effortScore: numberOrFallback(row.effort_score, 0.5),
+        dopamineScore: numberOrFallback(row.dopamine_score, 0.5),
+        status: row.status,
+      };
+    });
   }
 
   async saveGeneratedApp(app: GeneratedApp): Promise<void> {

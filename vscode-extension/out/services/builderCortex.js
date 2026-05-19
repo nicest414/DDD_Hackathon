@@ -120,8 +120,12 @@ class BuilderCortex {
     async registerProject(project) {
         this.projects.set(project.id, project);
         await this.store.saveProject(project);
-        this.decisions.set(project.id, []);
-        this.cards.set(project.id, []);
+        const [decisions, cards] = await Promise.all([
+            this.store.getDecisions(project.id),
+            this.store.getCards(project.id),
+        ]);
+        this.decisions.set(project.id, decisions);
+        this.cards.set(project.id, cards);
     }
     async _nextCard(projectId) {
         const project = this.projects.get(projectId);
