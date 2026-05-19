@@ -96,6 +96,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
   Widget build(BuildContext context) {
     final total = _baseline.totalCards();
     final progress = (_currentIndex + 1) / total;
+    final currentCard = _currentCard;
 
     return Scaffold(
       body: SafeArea(
@@ -120,12 +121,13 @@ class _SwipeScreenState extends State<SwipeScreen> {
                       onReject: () => _decide('rejected'),
                     ),
                     const SizedBox(height: 20),
-                    _SwipeHints(),
+                    _SwipeHints(card: currentCard),
                   ],
                 ),
               ),
             ),
             _ActionButtons(
+              card: currentCard,
               onReject: () => _decide('rejected'),
               onAdopt: () => _decide('accepted'),
             ),
@@ -254,17 +256,28 @@ class _CardStack extends StatelessWidget {
 }
 
 class _SwipeHints extends StatelessWidget {
+  final DecisionCard? card;
+  const _SwipeHints({required this.card});
+
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        _Hint(label: '却下', icon: '✕', color: const Color(0xFFef4444)),
-        _Hint(
-          label: '採用',
-          icon: '✓',
-          color: const Color(0xFF22c55e),
-          reverse: true,
+        Flexible(
+          child: _Hint(
+            label: card?.rejectLabel ?? '却下',
+            icon: '✕',
+            color: const Color(0xFFef4444),
+          ),
+        ),
+        Flexible(
+          child: _Hint(
+            label: card?.acceptLabel ?? '採用',
+            icon: '✓',
+            color: const Color(0xFF22c55e),
+            reverse: true,
+          ),
         ),
       ],
     );
@@ -298,12 +311,16 @@ class _Hint extends StatelessWidget {
         ),
       ),
       const SizedBox(width: 6),
-      Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
+      Flexible(
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: color,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     ];
@@ -315,9 +332,14 @@ class _Hint extends StatelessWidget {
 }
 
 class _ActionButtons extends StatelessWidget {
+  final DecisionCard? card;
   final VoidCallback onReject;
   final VoidCallback onAdopt;
-  const _ActionButtons({required this.onReject, required this.onAdopt});
+  const _ActionButtons({
+    required this.card,
+    required this.onReject,
+    required this.onAdopt,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -326,18 +348,24 @@ class _ActionButtons extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _CircleButton(
-            icon: '✕',
-            color: const Color(0xFFef4444),
-            onTap: onReject,
-            size: 64,
+          Expanded(
+            child: _ChoiceButton(
+              icon: '✕',
+              label: card?.rejectLabel ?? '却下',
+              color: const Color(0xFFef4444),
+              onTap: onReject,
+              size: 64,
+            ),
           ),
           const SizedBox(width: 24),
-          _CircleButton(
-            icon: '✓',
-            color: const Color(0xFF22c55e),
-            onTap: onAdopt,
-            size: 64,
+          Expanded(
+            child: _ChoiceButton(
+              icon: '✓',
+              label: card?.acceptLabel ?? '採用',
+              color: const Color(0xFF22c55e),
+              onTap: onAdopt,
+              size: 64,
+            ),
           ),
         ],
       ),
@@ -345,13 +373,15 @@ class _ActionButtons extends StatelessWidget {
   }
 }
 
-class _CircleButton extends StatelessWidget {
+class _ChoiceButton extends StatelessWidget {
   final String icon;
+  final String label;
   final Color color;
   final VoidCallback onTap;
   final double size;
-  const _CircleButton({
+  const _ChoiceButton({
     required this.icon,
+    required this.label,
     required this.color,
     required this.onTap,
     required this.size,
@@ -361,19 +391,36 @@ class _CircleButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: color, width: 2),
-        ),
-        child: Center(
-          child: Text(
-            icon,
-            style: TextStyle(color: color, fontSize: size * 0.38),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: color, width: 2),
+            ),
+            child: Center(
+              child: Text(
+                icon,
+                style: TextStyle(color: color, fontSize: size * 0.38),
+              ),
+            ),
           ),
-        ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
