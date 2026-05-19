@@ -38,21 +38,38 @@ class DDDWebSocketServer {
             this.output.appendLine('[DDD] Flutter client connected');
             ws.on('message', (raw) => {
                 const payload = raw.toString();
-                let event;
+                let parsed;
                 try {
-                    event = JSON.parse(payload);
+                    parsed = JSON.parse(payload);
                 }
                 catch (err) {
                     this.output.appendLine(`[DDD] Received invalid JSON: ${this._errorMessage(err)}; payload=${payload}`);
+                    this._sendError(ws, {
+                        type: 'error',
+                        code: 'INVALID_EVENT',
+                        message: 'Request body must be valid JSON.',
+                        recoverable: true,
+                    });
                     return;
                 }
+                const validation = this._validateIncomingEvent(parsed);
+                if ('error' in validation) {
+                    this.output.appendLine(`[DDD] Invalid event: ${validation.error.message}`);
+                    this._sendError(ws, validation.error);
+                    return;
+                }
+                const event = validation.event;
                 this.output.appendLine(`[DDD] ← ${event.type}`);
-                try {
-                    this.onEvent?.(event);
-                }
-                catch (err) {
+                Promise.resolve(this.onEvent?.(event)).catch((err) => {
                     this.output.appendLine(`[DDD] onEvent failed: ${this._errorMessage(err)}; eventType=${event.type}`);
-                }
+                    this._sendError(ws, {
+                        type: 'error',
+                        projectId: 'projectId' in event ? event.projectId : event.project.id,
+                        code: 'UNKNOWN_ERROR',
+                        message: 'Failed to process event.',
+                        recoverable: true,
+                    });
+                });
             });
             ws.on('close', () => {
                 if (this.client === ws) {
@@ -81,6 +98,103 @@ class DDDWebSocketServer {
     }
     get isRunning() {
         return this.wss !== null;
+    }
+    _validateIncomingEvent(event) {
+        if (!this._isRecord(event)) {
+            return {
+                error: this._invalidEvent('Event payload must be a JSON object.'),
+            };
+        }
+        if (event.type === 'startSession') {
+            const project = event.project;
+            const projectError = this._validateProject(project);
+            if (projectError) {
+                return { error: this._invalidEvent(projectError) };
+            }
+            return {
+                event: {
+                    type: 'startSession',
+                    project: project,
+                },
+            };
+        }
+        if (event.type === 'swipe') {
+            if (!this._isNonEmptyString(event.projectId)) {
+                return { error: this._invalidEvent('swipe.projectId is required.') };
+            }
+            if (!this._isNonEmptyString(event.cardId)) {
+                return {
+                    error: this._invalidEvent('swipe.cardId is required.', event.projectId),
+                };
+            }
+            if (event.action !== 'accepted' && event.action !== 'rejected') {
+                return {
+                    error: this._invalidEvent('swipe.action must be accepted or rejected.', event.projectId),
+                };
+            }
+            if (!this._isNonEmptyString(event.createdAt)) {
+                return {
+                    error: this._invalidEvent('swipe.createdAt is required.', event.projectId),
+                };
+            }
+            return {
+                event: {
+                    type: 'swipe',
+                    projectId: event.projectId,
+                    cardId: event.cardId,
+                    action: event.action,
+                    createdAt: event.createdAt,
+                },
+            };
+        }
+        return {
+            error: this._invalidEvent('event.type must be startSession or swipe.'),
+        };
+    }
+    _validateProject(project) {
+        if (!this._isRecord(project)) {
+            return 'startSession.project is required.';
+        }
+        const required = [
+            'id',
+            'title',
+            'initialPrompt',
+            'status',
+            'createdAt',
+            'updatedAt',
+        ];
+        const missing = required.find((field) => !this._isNonEmptyString(project[field]));
+        if (missing) {
+            return `startSession.project.${missing} is required.`;
+        }
+        if (project.status !== 'draft' &&
+            project.status !== 'building' &&
+            project.status !== 'generated' &&
+            project.status !== 'failed') {
+            return 'startSession.project.status is invalid.';
+        }
+        return null;
+    }
+    _sendError(ws, event) {
+        if (ws.readyState === ws_1.WebSocket.OPEN) {
+            ws.send(JSON.stringify(event));
+            this.output.appendLine(`[DDD] → error ${event.code}`);
+        }
+    }
+    _invalidEvent(message, projectId) {
+        return {
+            type: 'error',
+            projectId,
+            code: 'INVALID_EVENT',
+            message,
+            recoverable: true,
+        };
+    }
+    _isRecord(value) {
+        return typeof value === 'object' && value !== null && !Array.isArray(value);
+    }
+    _isNonEmptyString(value) {
+        return typeof value === 'string' && value.trim().length > 0;
     }
     _errorMessage(err) {
         return err instanceof Error ? err.message : String(err);

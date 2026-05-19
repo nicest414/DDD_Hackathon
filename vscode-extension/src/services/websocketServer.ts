@@ -1,12 +1,12 @@
 import * as vscode from 'vscode';
 import { WebSocketServer, WebSocket } from 'ws';
-import { IncomingEvent, OutgoingEvent } from '../models/types';
+import { ErrorEvent, IncomingEvent, OutgoingEvent, Project } from '../models/types';
 
 export class DDDWebSocketServer {
   private wss: WebSocketServer | null = null;
   private client: WebSocket | null = null;
   private output: vscode.OutputChannel;
-  onEvent?: (event: IncomingEvent) => void;
+  onEvent?: (event: IncomingEvent) => void | Promise<void>;
 
   constructor(output: vscode.OutputChannel) {
     this.output = output;
@@ -44,24 +44,44 @@ export class DDDWebSocketServer {
 
       ws.on('message', (raw) => {
         const payload = raw.toString();
-        let event: IncomingEvent;
+        let parsed: unknown;
         try {
-          event = JSON.parse(payload) as IncomingEvent;
+          parsed = JSON.parse(payload);
         } catch (err) {
           this.output.appendLine(
             `[DDD] Received invalid JSON: ${this._errorMessage(err)}; payload=${payload}`,
           );
+          this._sendError(ws, {
+            type: 'error',
+            code: 'INVALID_EVENT',
+            message: 'Request body must be valid JSON.',
+            recoverable: true,
+          });
           return;
         }
 
+        const validation = this._validateIncomingEvent(parsed);
+        if ('error' in validation) {
+          this.output.appendLine(`[DDD] Invalid event: ${validation.error.message}`);
+          this._sendError(ws, validation.error);
+          return;
+        }
+
+        const event = validation.event;
+
         this.output.appendLine(`[DDD] ← ${event.type}`);
-        try {
-          this.onEvent?.(event);
-        } catch (err) {
+        Promise.resolve(this.onEvent?.(event)).catch((err) => {
           this.output.appendLine(
             `[DDD] onEvent failed: ${this._errorMessage(err)}; eventType=${event.type}`,
           );
-        }
+          this._sendError(ws, {
+            type: 'error',
+            projectId: 'projectId' in event ? event.projectId : event.project.id,
+            code: 'UNKNOWN_ERROR',
+            message: 'Failed to process event.',
+            recoverable: true,
+          });
+        });
       });
 
       ws.on('close', () => {
@@ -95,6 +115,123 @@ export class DDDWebSocketServer {
 
   get isRunning(): boolean {
     return this.wss !== null;
+  }
+
+  private _validateIncomingEvent(
+    event: unknown,
+  ): { event: IncomingEvent } | { error: ErrorEvent } {
+    if (!this._isRecord(event)) {
+      return {
+        error: this._invalidEvent('Event payload must be a JSON object.'),
+      };
+    }
+
+    if (event.type === 'startSession') {
+      const project = event.project;
+      const projectError = this._validateProject(project);
+      if (projectError) {
+        return { error: this._invalidEvent(projectError) };
+      }
+      return {
+        event: {
+          type: 'startSession',
+          project: project as Project,
+        },
+      };
+    }
+
+    if (event.type === 'swipe') {
+      if (!this._isNonEmptyString(event.projectId)) {
+        return { error: this._invalidEvent('swipe.projectId is required.') };
+      }
+      if (!this._isNonEmptyString(event.cardId)) {
+        return {
+          error: this._invalidEvent('swipe.cardId is required.', event.projectId),
+        };
+      }
+      if (event.action !== 'accepted' && event.action !== 'rejected') {
+        return {
+          error: this._invalidEvent(
+            'swipe.action must be accepted or rejected.',
+            event.projectId,
+          ),
+        };
+      }
+      if (!this._isNonEmptyString(event.createdAt)) {
+        return {
+          error: this._invalidEvent('swipe.createdAt is required.', event.projectId),
+        };
+      }
+
+      return {
+        event: {
+          type: 'swipe',
+          projectId: event.projectId,
+          cardId: event.cardId,
+          action: event.action,
+          createdAt: event.createdAt,
+        },
+      };
+    }
+
+    return {
+      error: this._invalidEvent('event.type must be startSession or swipe.'),
+    };
+  }
+
+  private _validateProject(project: unknown): string | null {
+    if (!this._isRecord(project)) {
+      return 'startSession.project is required.';
+    }
+
+    const required: Array<keyof Project> = [
+      'id',
+      'title',
+      'initialPrompt',
+      'status',
+      'createdAt',
+      'updatedAt',
+    ];
+    const missing = required.find((field) => !this._isNonEmptyString(project[field]));
+    if (missing) {
+      return `startSession.project.${missing} is required.`;
+    }
+
+    if (
+      project.status !== 'draft' &&
+      project.status !== 'building' &&
+      project.status !== 'generated' &&
+      project.status !== 'failed'
+    ) {
+      return 'startSession.project.status is invalid.';
+    }
+
+    return null;
+  }
+
+  private _sendError(ws: WebSocket, event: ErrorEvent): void {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(event));
+      this.output.appendLine(`[DDD] → error ${event.code}`);
+    }
+  }
+
+  private _invalidEvent(message: string, projectId?: string): ErrorEvent {
+    return {
+      type: 'error',
+      projectId,
+      code: 'INVALID_EVENT',
+      message,
+      recoverable: true,
+    };
+  }
+
+  private _isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  private _isNonEmptyString(value: unknown): value is string {
+    return typeof value === 'string' && value.trim().length > 0;
   }
 
   private _errorMessage(err: unknown): string {
