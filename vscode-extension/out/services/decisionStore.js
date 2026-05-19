@@ -155,6 +155,18 @@ class DecisionStore {
       WHERE decisions.card_id = decision_cards.id
         AND decisions.project_id = '';
     `);
+        await db.exec(`
+      UPDATE decision_cards
+      SET hook = title
+      WHERE hook = '';
+
+      UPDATE decision_cards
+      SET payoff = CASE
+        WHEN predicted_reward <> '' THEN predicted_reward
+        ELSE description
+      END
+      WHERE payoff = '';
+    `);
     }
     async importLegacyJson(filePath) {
         const legacy = readLegacyStore(filePath);
@@ -221,6 +233,10 @@ class DecisionStore {
          action = EXCLUDED.action,
          reason = EXCLUDED.reason,
          created_at = EXCLUDED.created_at`, [decision.id, projectId, decision.cardId, decision.action, decision.reason, decision.createdAt]);
+        await this.assertInitialized().query(`UPDATE decision_cards
+       SET status = $1
+       WHERE id = $2
+         AND project_id = $3`, [decision.action, decision.cardId, projectId]);
     }
     async getDecisions(projectId) {
         const result = await this.assertInitialized().query(`SELECT *
@@ -279,6 +295,33 @@ class DecisionStore {
             dopamineScore,
             card.status,
         ]);
+    }
+    async getCards(projectId) {
+        const result = await this.assertInitialized().query(`SELECT *
+       FROM decision_cards
+       WHERE project_id = $1
+       ORDER BY id ASC`, [projectId]);
+        return result.rows.map((row) => {
+            const predictedReward = stringOrFallback(row.predicted_reward, '');
+            const description = stringOrFallback(row.description, '');
+            return {
+                id: row.id,
+                projectId: row.project_id,
+                type: row.type,
+                title: row.title,
+                hook: stringOrFallback(row.hook, row.title),
+                description,
+                payoff: stringOrFallback(row.payoff, predictedReward || description),
+                acceptLabel: stringOrFallback(row.accept_label, 'これ欲しい'),
+                rejectLabel: stringOrFallback(row.reject_label, '今はいらない'),
+                payload: parseJsonRecord(row.payload),
+                predictedReward,
+                noveltyScore: numberOrFallback(row.novelty_score, 0.5),
+                effortScore: numberOrFallback(row.effort_score, 0.5),
+                dopamineScore: numberOrFallback(row.dopamine_score, 0.5),
+                status: row.status,
+            };
+        });
     }
     async saveGeneratedApp(app) {
         await this.assertInitialized().query(`INSERT INTO generated_apps (
