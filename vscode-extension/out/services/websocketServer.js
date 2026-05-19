@@ -43,7 +43,7 @@ class DDDWebSocketServer {
                     parsed = JSON.parse(payload);
                 }
                 catch (err) {
-                    this.output.appendLine(`[DDD] Received invalid JSON: ${this._errorMessage(err)}; payload=${payload}`);
+                    this.output.appendLine(`[DDD] Received invalid JSON: ${this._errorMessage(err)}; payloadLength=${payload.length}; payload=<payload omitted>`);
                     this._sendError(ws, {
                         type: 'error',
                         code: 'INVALID_EVENT',
@@ -60,7 +60,7 @@ class DDDWebSocketServer {
                 }
                 const event = validation.event;
                 this.output.appendLine(`[DDD] ← ${event.type}`);
-                Promise.resolve(this.onEvent?.(event)).catch((err) => {
+                Promise.resolve().then(() => this.onEvent?.(event)).catch((err) => {
                     this.output.appendLine(`[DDD] onEvent failed: ${this._errorMessage(err)}; eventType=${event.type}`);
                     this._sendError(ws, {
                         type: 'error',
