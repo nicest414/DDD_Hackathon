@@ -69,6 +69,25 @@ const MOCK_CARDS = [
         noveltyScore: 0.4, effortScore: 0.3, dopamineScore: 0.5,
     },
 ];
+function clampScore(score) {
+    if (!Number.isFinite(score)) {
+        return 0.5;
+    }
+    return Math.min(1, Math.max(0, score));
+}
+function normalizeCard(card, projectId) {
+    return {
+        ...card,
+        projectId,
+        payload: card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload)
+            ? card.payload
+            : {},
+        noveltyScore: clampScore(card.noveltyScore),
+        effortScore: clampScore(card.effortScore),
+        dopamineScore: clampScore(card.dopamineScore),
+        status: 'pending',
+    };
+}
 class BaselineDopamine {
     getNextCard(projectId, decisions) {
         const usedIds = new Set(decisions.map((d) => d.cardId));
@@ -76,7 +95,7 @@ class BaselineDopamine {
         if (!next) {
             return null;
         }
-        return { ...next, projectId, status: 'pending' };
+        return normalizeCard(next, projectId);
     }
     getMockApp(projectId) {
         return {

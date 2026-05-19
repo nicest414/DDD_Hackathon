@@ -1,6 +1,8 @@
 import { DecisionCard, Decision, GeneratedApp } from '../models/types';
 
-const MOCK_CARDS: Omit<DecisionCard, 'projectId' | 'status'>[] = [
+type BaselineCard = Omit<DecisionCard, 'projectId' | 'status'>;
+
+const MOCK_CARDS: BaselineCard[] = [
   {
     id: 'mock-1', type: 'moment',
     title: '習慣の登録・管理',
@@ -69,12 +71,31 @@ const MOCK_CARDS: Omit<DecisionCard, 'projectId' | 'status'>[] = [
   },
 ];
 
+function clampScore(score: number): number {
+  if (!Number.isFinite(score)) { return 0.5; }
+  return Math.min(1, Math.max(0, score));
+}
+
+function normalizeCard(card: BaselineCard, projectId: string): DecisionCard {
+  return {
+    ...card,
+    projectId,
+    payload: card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload)
+      ? card.payload
+      : {},
+    noveltyScore: clampScore(card.noveltyScore),
+    effortScore: clampScore(card.effortScore),
+    dopamineScore: clampScore(card.dopamineScore),
+    status: 'pending',
+  };
+}
+
 export class BaselineDopamine {
   getNextCard(projectId: string, decisions: Decision[]): DecisionCard | null {
     const usedIds = new Set(decisions.map((d) => d.cardId));
     const next = MOCK_CARDS.find((c) => !usedIds.has(c.id));
     if (!next) { return null; }
-    return { ...next, projectId, status: 'pending' };
+    return normalizeCard(next, projectId);
   }
 
   getMockApp(projectId: string): GeneratedApp {
