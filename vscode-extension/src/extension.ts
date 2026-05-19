@@ -11,15 +11,16 @@ import { SwipeEvent, StartSessionEvent } from './models/types';
 
 let server: DDDWebSocketServer | null = null;
 let cortex: BuilderCortex | null = null;
+let store: DecisionStore | null = null;
 let currentProjectId: string | null = null;
 
-export function activate(context: vscode.ExtensionContext): void {
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel('DDD Builder Cortex');
-  const store = new DecisionStore();
+  store = new DecisionStore();
 
   const storagePath = context.globalStorageUri.fsPath;
   fs.mkdirSync(storagePath, { recursive: true });
-  store.init(storagePath);
+  await store.init(storagePath);
 
   const ws = new DDDWebSocketServer(output);
   const ai = new AIAdapter(context);
@@ -30,7 +31,7 @@ export function activate(context: vscode.ExtensionContext): void {
   ws.onEvent = async (event) => {
     if (event.type === 'startSession') {
       const e = event as StartSessionEvent;
-      cortex!.registerProject(e.project);
+      await cortex!.registerProject(e.project);
       currentProjectId = e.project.id;
       output.appendLine(`[DDD] Session started: ${e.project.title}`);
     } else if (event.type === 'swipe') {
@@ -106,8 +107,8 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       const publisher = new GitHubPublisher();
-      const decisions = store.getDecisions(currentProjectId);
-      let app = store.getGeneratedApp(currentProjectId);
+      const decisions = await store!.getDecisions(currentProjectId);
+      let app = await store!.getGeneratedApp(currentProjectId);
       if (!app) {
         app = await cortex!.generateApp(currentProjectId);
       }
@@ -134,6 +135,7 @@ export function activate(context: vscode.ExtensionContext): void {
   output.appendLine('[DDD] Builder Cortex activated');
 }
 
-export function deactivate(): void {
+export async function deactivate(): Promise<void> {
   server?.stop();
+  await store?.close();
 }

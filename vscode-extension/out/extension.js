@@ -45,13 +45,14 @@ const decisionStore_1 = require("./services/decisionStore");
 const githubPublisher_1 = require("./services/githubPublisher");
 let server = null;
 let cortex = null;
+let store = null;
 let currentProjectId = null;
-function activate(context) {
+async function activate(context) {
     const output = vscode.window.createOutputChannel('DDD Builder Cortex');
-    const store = new decisionStore_1.DecisionStore();
+    store = new decisionStore_1.DecisionStore();
     const storagePath = context.globalStorageUri.fsPath;
     fs.mkdirSync(storagePath, { recursive: true });
-    store.init(storagePath);
+    await store.init(storagePath);
     const ws = new websocketServer_1.DDDWebSocketServer(output);
     const ai = new aiAdapter_1.AIAdapter(context);
     const baseline = new baselineDopamine_1.BaselineDopamine();
@@ -60,7 +61,7 @@ function activate(context) {
     ws.onEvent = async (event) => {
         if (event.type === 'startSession') {
             const e = event;
-            cortex.registerProject(e.project);
+            await cortex.registerProject(e.project);
             currentProjectId = e.project.id;
             output.appendLine(`[DDD] Session started: ${e.project.title}`);
         }
@@ -125,8 +126,8 @@ function activate(context) {
             return;
         }
         const publisher = new githubPublisher_1.GitHubPublisher();
-        const decisions = store.getDecisions(currentProjectId);
-        let app = store.getGeneratedApp(currentProjectId);
+        const decisions = await store.getDecisions(currentProjectId);
+        let app = await store.getGeneratedApp(currentProjectId);
         if (!app) {
             app = await cortex.generateApp(currentProjectId);
         }
@@ -150,7 +151,8 @@ function activate(context) {
     }));
     output.appendLine('[DDD] Builder Cortex activated');
 }
-function deactivate() {
+async function deactivate() {
     server?.stop();
+    await store?.close();
 }
 //# sourceMappingURL=extension.js.map
