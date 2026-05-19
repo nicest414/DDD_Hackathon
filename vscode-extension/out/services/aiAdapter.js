@@ -42,7 +42,17 @@ const openai_1 = __importDefault(require("openai"));
 class AIAdapterError extends Error {
 }
 exports.AIAdapterError = AIAdapterError;
-const cardTypes = new Set(['concept', 'feature', 'ui', 'flow', 'data']);
+const cardTypes = new Set([
+    'concept',
+    'feature',
+    'ui',
+    'flow',
+    'data',
+    'moment',
+    'reward',
+    'polish',
+    'risk',
+]);
 function requiredString(value, field) {
     if (typeof value !== 'string' || value.trim().length === 0) {
         throw new AIAdapterError(`AI response is missing required field: ${field}`);
@@ -88,12 +98,17 @@ Rejected features: ${rejected.map((c) => c.title).join(', ') || 'none'}
 
 Suggest the next most important feature card in JSON:
 {
-  "type": "feature",
+  "type": "moment",
   "title": "...",
+  "hook": "...",
   "description": "...",
+  "payoff": "...",
+  "acceptLabel": "...",
+  "rejectLabel": "...",
   "predictedReward": "...",
   "noveltyScore": 0.0-1.0,
-  "effortScore": 0.0-1.0
+  "effortScore": 0.0-1.0,
+  "dopamineScore": 0.0-1.0
 }
 Only output JSON, no markdown.`;
         const client = await this.client();
@@ -117,18 +132,28 @@ Only output JSON, no markdown.`;
         const title = requiredString(parsed['title'], 'title');
         const description = requiredString(parsed['description'], 'description');
         const predictedReward = optionalString(parsed['predictedReward'], '');
+        const hook = optionalString(parsed['hook'], title);
+        const payoff = optionalString(parsed['payoff'], predictedReward || description);
+        const acceptLabel = optionalString(parsed['acceptLabel'], 'これ欲しい');
+        const rejectLabel = optionalString(parsed['rejectLabel'], '今はいらない');
         const noveltyScore = coerceScore(parsed['noveltyScore']);
         const effortScore = coerceScore(parsed['effortScore']);
+        const dopamineScore = coerceScore(parsed['dopamineScore']);
         return {
             id: `ai-${Date.now()}`,
             projectId: project.id,
             type,
             title,
+            hook,
             description,
+            payoff,
+            acceptLabel,
+            rejectLabel,
             payload: {},
             predictedReward,
             noveltyScore,
             effortScore,
+            dopamineScore,
             status: 'pending',
         };
     }

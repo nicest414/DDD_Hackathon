@@ -142,10 +142,25 @@ async function activate(context) {
         }
         const result = await publisher.publish(app, decisions, repoPath);
         if (result.pullRequestUrl) {
-            ws.send({ type: 'pr', repositoryUrl: result.repositoryUrl, branchName: result.branchName, url: result.pullRequestUrl });
+            ws.send({
+                type: 'pr',
+                projectId: currentProjectId,
+                repositoryUrl: result.repositoryUrl,
+                branchName: result.branchName,
+                url: result.pullRequestUrl,
+                status: 'created',
+            });
             vscode.window.showInformationMessage(`DDD: PR created → ${result.pullRequestUrl}`);
         }
         else {
+            ws.send({
+                type: 'pr',
+                projectId: currentProjectId,
+                repositoryUrl: '',
+                branchName: result.branchName,
+                url: '',
+                status: 'localSaved',
+            });
             vscode.window.showWarningMessage('DDD: GitHub push failed. Local files saved.');
         }
     }));

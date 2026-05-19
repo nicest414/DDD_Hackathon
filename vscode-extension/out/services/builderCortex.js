@@ -60,6 +60,7 @@ class BuilderCortex {
         }
         const decision = {
             id: `d-${Date.now()}`,
+            projectId,
             cardId,
             action,
             reason: '',
