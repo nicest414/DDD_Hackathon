@@ -68,7 +68,7 @@ class BuilderCortex {
         const updatedList = list.filter((d) => d.cardId !== cardId);
         updatedList.push(decision);
         this.decisions.set(projectId, updatedList);
-        this.store.saveDecision(decision);
+        await this.store.saveDecision(decision);
         this.output.appendLine(`[DDD] Decision: ${action} → ${cardId}`);
         // Generate next card
         const nextCard = await this._nextCard(projectId);
@@ -87,7 +87,7 @@ class BuilderCortex {
         const accepted = allCards.filter((c) => decisions.find((d) => d.cardId === c.id && d.action === 'accepted'));
         this.output.appendLine('[DDD] Generating app...');
         project.status = 'building';
-        this.store.saveProject(project);
+        await this.store.saveProject(project);
         let app;
         try {
             app = await this.ai.generateApp(project, accepted);
@@ -99,14 +99,14 @@ class BuilderCortex {
             }
             else {
                 project.status = 'failed';
-                this.store.saveProject(project);
+                await this.store.saveProject(project);
                 this.output.appendLine('[DDD] App generation failed, marking project failed');
                 throw err;
             }
         }
-        this.store.saveGeneratedApp(app);
+        await this.store.saveGeneratedApp(app);
         project.status = 'generated';
-        this.store.saveProject(project);
+        await this.store.saveProject(project);
         this.output.appendLine('[DDD] App generated');
         return app;
     }
@@ -116,9 +116,9 @@ class BuilderCortex {
         terminal.show();
         // TODO: detect Vite port and send PreviewEvent to mobile
     }
-    registerProject(project) {
+    async registerProject(project) {
         this.projects.set(project.id, project);
-        this.store.saveProject(project);
+        await this.store.saveProject(project);
         this.decisions.set(project.id, []);
         this.cards.set(project.id, []);
     }
@@ -136,7 +136,7 @@ class BuilderCortex {
             const rejected = allCards.filter((c) => decisions.find((d) => d.cardId === c.id && d.action === 'rejected'));
             const card = await this.ai.generateNextCard(project, decisions, accepted, rejected);
             this.cards.get(projectId)?.push(card);
-            this.store.saveCard(card);
+            await this.store.saveCard(card);
             return card;
         }
         catch (err) {
@@ -144,7 +144,7 @@ class BuilderCortex {
                 const card = this.baseline.getNextCard(projectId, decisions);
                 if (card) {
                     this.cards.get(projectId)?.push(card);
-                    this.store.saveCard(card);
+                    await this.store.saveCard(card);
                 }
                 return card;
             }

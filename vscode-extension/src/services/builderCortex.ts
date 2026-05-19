@@ -42,7 +42,7 @@ export class BuilderCortex {
     const updatedList = list.filter((d) => d.cardId !== cardId);
     updatedList.push(decision);
     this.decisions.set(projectId, updatedList);
-    this.store.saveDecision(decision);
+    await this.store.saveDecision(decision);
 
     this.output.appendLine(`[DDD] Decision: ${action} → ${cardId}`);
 
@@ -68,7 +68,7 @@ export class BuilderCortex {
 
     this.output.appendLine('[DDD] Generating app...');
     project.status = 'building';
-    this.store.saveProject(project);
+    await this.store.saveProject(project);
 
     let app;
     try {
@@ -79,15 +79,15 @@ export class BuilderCortex {
         app = this.baseline.getMockApp(projectId);
       } else {
         project.status = 'failed';
-        this.store.saveProject(project);
+        await this.store.saveProject(project);
         this.output.appendLine('[DDD] App generation failed, marking project failed');
         throw err;
       }
     }
 
-    this.store.saveGeneratedApp(app);
+    await this.store.saveGeneratedApp(app);
     project.status = 'generated';
-    this.store.saveProject(project);
+    await this.store.saveProject(project);
     this.output.appendLine('[DDD] App generated');
     return app;
   }
@@ -99,9 +99,9 @@ export class BuilderCortex {
     // TODO: detect Vite port and send PreviewEvent to mobile
   }
 
-  registerProject(project: Project): void {
+  async registerProject(project: Project): Promise<void> {
     this.projects.set(project.id, project);
-    this.store.saveProject(project);
+    await this.store.saveProject(project);
     this.decisions.set(project.id, []);
     this.cards.set(project.id, []);
   }
@@ -123,14 +123,14 @@ export class BuilderCortex {
         decisions.find((d) => d.cardId === c.id && d.action === 'rejected'));
       const card = await this.ai.generateNextCard(project, decisions, accepted, rejected);
       this.cards.get(projectId)?.push(card);
-      this.store.saveCard(card);
+      await this.store.saveCard(card);
       return card;
     } catch (err) {
       if (fallback) {
         const card = this.baseline.getNextCard(projectId, decisions);
         if (card) {
           this.cards.get(projectId)?.push(card);
-          this.store.saveCard(card);
+          await this.store.saveCard(card);
         }
         return card;
       }
