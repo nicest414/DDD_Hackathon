@@ -78,11 +78,11 @@ class WebSocketService {
     _onDisconnect();
   }
 
-  void sendDecision(Decision decision, String projectId) {
+  void sendDecision(Decision decision) {
     if (status != WsStatus.connected) return;
     final payload = {
       'type': 'swipe',
-      'projectId': projectId,
+      'projectId': decision.projectId,
       'cardId': decision.cardId,
       'action': decision.action,
       'createdAt': decision.createdAt.toIso8601String(),

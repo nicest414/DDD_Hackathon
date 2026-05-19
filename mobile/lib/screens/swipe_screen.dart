@@ -61,11 +61,12 @@ class _SwipeScreenState extends State<SwipeScreen> {
     final card = _currentCard!;
     final decision = Decision(
       id: const Uuid().v4(),
+      projectId: widget.project.id,
       cardId: card.id,
       action: action,
     );
     _decisions.add(decision);
-    _ws.sendDecision(decision, widget.project.id);
+    _ws.sendDecision(decision);
 
     Future.delayed(const Duration(milliseconds: 350), () {
       if (!mounted) return;

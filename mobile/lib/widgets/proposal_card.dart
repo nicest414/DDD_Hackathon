@@ -55,8 +55,12 @@ class _ProposalCardWidgetState extends State<ProposalCardWidget> {
                 right: isRight ? null : 24,
                 left: isRight ? 24 : null,
                 child: _Stamp(
-                  label: isRight ? '採用' : '却下',
-                  color: isRight ? const Color(0xFF22c55e) : const Color(0xFFef4444),
+                  label: isRight
+                      ? widget.card.acceptLabel
+                      : widget.card.rejectLabel,
+                  color: isRight
+                      ? const Color(0xFF22c55e)
+                      : const Color(0xFFef4444),
                   opacity: ratio,
                 ),
               ),
@@ -84,23 +88,46 @@ class _CardBody extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            _CategoryBadge(card.type),
-            const SizedBox(width: 8),
-            Text('#${card.id}',
-                style: const TextStyle(fontSize: 12, color: Color(0xFF64748b))),
-          ]),
+          Row(
+            children: [
+              _CategoryBadge(card.type),
+              const SizedBox(width: 8),
+              Text(
+                '#${card.id}',
+                style: const TextStyle(fontSize: 12, color: Color(0xFF64748b)),
+              ),
+            ],
+          ),
           const SizedBox(height: 16),
-          Text(card.title,
-              style: const TextStyle(
-                  fontSize: 22, fontWeight: FontWeight.w800, height: 1.3)),
+          Text(
+            card.title,
+            style: const TextStyle(
+              fontSize: 18,
+              color: Color(0xFF94a3b8),
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            card.hook,
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              height: 1.3,
+            ),
+          ),
           const SizedBox(height: 12),
           Expanded(
-            child: Text(card.description,
-                style: const TextStyle(
-                    fontSize: 15, color: Color(0xFF94a3b8), height: 1.65)),
+            child: Text(
+              card.description,
+              style: const TextStyle(
+                fontSize: 15,
+                color: Color(0xFF94a3b8),
+                height: 1.65,
+              ),
+            ),
           ),
-          if (card.predictedReward.isNotEmpty) ...[
+          if (card.payoff.isNotEmpty || card.predictedReward.isNotEmpty) ...[
             Container(
               decoration: BoxDecoration(
                 color: Colors.white.withAlpha(10),
@@ -111,15 +138,34 @@ class _CardBody extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('採用したら',
-                      style: TextStyle(
-                          fontSize: 11,
-                          letterSpacing: 1,
-                          color: Color(0xFF64748b))),
+                  const Text(
+                    '採用したら',
+                    style: TextStyle(
+                      fontSize: 11,
+                      letterSpacing: 1,
+                      color: Color(0xFF64748b),
+                    ),
+                  ),
                   const SizedBox(height: 6),
-                  Text(card.predictedReward,
+                  Text(
+                    card.predictedReward,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF94a3b8),
+                      height: 1.5,
+                    ),
+                  ),
+                  if (card.payoff.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      card.payoff,
                       style: const TextStyle(
-                          fontSize: 13, color: Color(0xFF94a3b8), height: 1.5)),
+                        fontSize: 13,
+                        color: Color(0xFFcbd5e1),
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -143,11 +189,14 @@ class _CategoryBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: Text(type,
-          style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFFa855f7))),
+      child: Text(
+        type,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFFa855f7),
+        ),
+      ),
     );
   }
 }
@@ -156,7 +205,11 @@ class _Stamp extends StatelessWidget {
   final String label;
   final Color color;
   final double opacity;
-  const _Stamp({required this.label, required this.color, required this.opacity});
+  const _Stamp({
+    required this.label,
+    required this.color,
+    required this.opacity,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -168,9 +221,14 @@ class _Stamp extends StatelessWidget {
           borderRadius: BorderRadius.circular(6),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        child: Text(label,
-            style: TextStyle(
-                color: color, fontSize: 24, fontWeight: FontWeight.w900)),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontSize: 24,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
       ),
     );
   }
