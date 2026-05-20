@@ -36,12 +36,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AIAdapter = exports.AIAdapterError = void 0;
+exports.ConfiguredAIRuntimeAdapter = exports.OpenAICompatibleAdapter = void 0;
 const vscode = __importStar(require("vscode"));
 const openai_1 = __importDefault(require("openai"));
-class AIAdapterError extends Error {
-}
-exports.AIAdapterError = AIAdapterError;
+const aiRuntime_1 = require("./aiRuntime");
 const cardTypes = new Set([
     'concept',
     'feature',
@@ -55,7 +53,7 @@ const cardTypes = new Set([
 ]);
 function requiredString(value, field) {
     if (typeof value !== 'string' || value.trim().length === 0) {
-        throw new AIAdapterError(`AI response is missing required field: ${field}`);
+        throw new aiRuntime_1.AIRuntimeAdapterError(`AI response is missing required field: ${field}`);
     }
     return value.trim();
 }
@@ -69,7 +67,7 @@ function coerceScore(value, fallback = 0.5) {
     }
     return Math.min(1, Math.max(0, numeric));
 }
-class AIAdapter {
+class OpenAICompatibleAdapter {
     constructor(context) {
         this.context = context;
     }
@@ -77,7 +75,7 @@ class AIAdapter {
         const cfg = vscode.workspace.getConfiguration('ddd.ai');
         const apiKey = await this.context.secrets.get('ddd.apiKey');
         if (typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-            throw new AIAdapterError('DDD API key is required');
+            throw new aiRuntime_1.AIRuntimeAdapterError('DDD API key is required');
         }
         return new openai_1.default({
             baseURL: cfg.get('baseUrl'),
@@ -123,7 +121,7 @@ Only output JSON, no markdown.`;
             parsed = JSON.parse(text);
         }
         catch {
-            throw new AIAdapterError(`Invalid JSON from AI: ${text}`);
+            throw new aiRuntime_1.AIRuntimeAdapterError(`Invalid JSON from AI: ${text}`);
         }
         const rawType = optionalString(parsed['type'], 'feature');
         const type = cardTypes.has(rawType)
@@ -183,7 +181,7 @@ Only output JSON.`;
             spec = JSON.parse(text);
         }
         catch {
-            throw new AIAdapterError(`Invalid JSON from AI: ${text}`);
+            throw new aiRuntime_1.AIRuntimeAdapterError(`Invalid JSON from AI: ${text}`);
         }
         return {
             id: `app-${project.id}`,
@@ -198,5 +196,26 @@ Only output JSON.`;
         };
     }
 }
-exports.AIAdapter = AIAdapter;
+exports.OpenAICompatibleAdapter = OpenAICompatibleAdapter;
+class ConfiguredAIRuntimeAdapter {
+    constructor(context, baseline) {
+        this.baseline = baseline;
+        this.openAI = new OpenAICompatibleAdapter(context);
+    }
+    async generateNextCard(project, decisions, accepted, rejected) {
+        return this.adapter().generateNextCard(project, decisions, accepted, rejected);
+    }
+    async generateApp(project, acceptedCards) {
+        return this.adapter().generateApp(project, acceptedCards);
+    }
+    adapter() {
+        const cfg = vscode.workspace.getConfiguration('ddd.ai');
+        const provider = cfg.get('provider') ?? 'openai-compatible';
+        if (provider === 'baseline') {
+            return this.baseline;
+        }
+        return this.openAI;
+    }
+}
+exports.ConfiguredAIRuntimeAdapter = ConfiguredAIRuntimeAdapter;
 //# sourceMappingURL=aiAdapter.js.map

@@ -65,7 +65,7 @@ Cmd + Shift + P
 現在登録されている主なコマンドは以下です。
 
 ```text
-DDD: Configure AI Provider
+DDD: Configure AI Runtime
 DDD: Start Session
 DDD: Generate App
 DDD: Open Preview
@@ -75,7 +75,7 @@ DDD: Publish to GitHub
 基本的な確認順は以下です。
 
 ```text
-DDD: Configure AI Provider
+DDD: Configure AI Runtime
 DDD: Start Session
 DDD: Generate App
 DDD: Open Preview

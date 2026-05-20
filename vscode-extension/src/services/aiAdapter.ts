@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import OpenAI from 'openai';
 import { DecisionCard, Decision, GeneratedApp, Project } from '../models/types';
-
-export class AIAdapterError extends Error {}
+import { AIRuntimeAdapter, AIRuntimeAdapterError, AIRuntimeProvider } from './aiRuntime';
+import { BaselineDopamine } from './baselineDopamine';
 
 const cardTypes = new Set<DecisionCard['type']>([
   'concept',
@@ -18,7 +18,7 @@ const cardTypes = new Set<DecisionCard['type']>([
 
 function requiredString(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new AIAdapterError(`AI response is missing required field: ${field}`);
+    throw new AIRuntimeAdapterError(`AI response is missing required field: ${field}`);
   }
   return value.trim();
 }
@@ -33,14 +33,14 @@ function coerceScore(value: unknown, fallback = 0.5): number {
   return Math.min(1, Math.max(0, numeric));
 }
 
-export class AIAdapter {
+export class OpenAICompatibleAdapter implements AIRuntimeAdapter {
   constructor(private readonly context: vscode.ExtensionContext) {}
 
   private async client(): Promise<OpenAI> {
     const cfg = vscode.workspace.getConfiguration('ddd.ai');
     const apiKey = await this.context.secrets.get('ddd.apiKey');
     if (typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-      throw new AIAdapterError('DDD API key is required');
+      throw new AIRuntimeAdapterError('DDD API key is required');
     }
     return new OpenAI({
       baseURL: cfg.get<string>('baseUrl'),
@@ -94,7 +94,7 @@ Only output JSON, no markdown.`;
     try {
       parsed = JSON.parse(text);
     } catch {
-      throw new AIAdapterError(`Invalid JSON from AI: ${text}`);
+      throw new AIRuntimeAdapterError(`Invalid JSON from AI: ${text}`);
     }
 
     const rawType = optionalString(parsed['type'], 'feature');
@@ -159,7 +159,7 @@ Only output JSON.`;
     try {
       spec = JSON.parse(text);
     } catch {
-      throw new AIAdapterError(`Invalid JSON from AI: ${text}`);
+      throw new AIRuntimeAdapterError(`Invalid JSON from AI: ${text}`);
     }
 
     return {
@@ -173,5 +173,38 @@ Only output JSON.`;
       pullRequestUrl: '',
       updatedAt: new Date().toISOString(),
     };
+  }
+}
+
+export class ConfiguredAIRuntimeAdapter implements AIRuntimeAdapter {
+  private readonly openAI: OpenAICompatibleAdapter;
+
+  constructor(
+    context: vscode.ExtensionContext,
+    private readonly baseline: BaselineDopamine,
+  ) {
+    this.openAI = new OpenAICompatibleAdapter(context);
+  }
+
+  async generateNextCard(
+    project: Project,
+    decisions: Decision[],
+    accepted: DecisionCard[],
+    rejected: DecisionCard[],
+  ): Promise<DecisionCard | null> {
+    return this.adapter().generateNextCard(project, decisions, accepted, rejected);
+  }
+
+  async generateApp(project: Project, acceptedCards: DecisionCard[]): Promise<GeneratedApp> {
+    return this.adapter().generateApp(project, acceptedCards);
+  }
+
+  private adapter(): AIRuntimeAdapter {
+    const cfg = vscode.workspace.getConfiguration('ddd.ai');
+    const provider = cfg.get<AIRuntimeProvider>('provider') ?? 'openai-compatible';
+    if (provider === 'baseline') {
+      return this.baseline;
+    }
+    return this.openAI;
   }
 }
