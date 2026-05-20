@@ -26,6 +26,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
   final _cards = <DecisionCard>[];
   int _currentIndex = 0;
   bool _animating = false;
+  bool _navigatingToResult = false;
   StreamSubscription<WsIncomingEvent>? _wsSub;
 
   @override
@@ -34,7 +35,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
     _preloadCards();
     _wsSub = _ws.events.listen((event) {
       if (!mounted) return;
-      if (event is WsCardEvent) {
+      if (event is WsCardEvent && event.card.projectId == widget.project.id) {
         setState(() => _cards.add(event.card));
       }
     });
@@ -44,6 +45,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
   @override
   void dispose() {
     _wsSub?.cancel();
+    if (!_navigatingToResult) {
+      _ws.disconnect();
+    }
     super.dispose();
   }
 
@@ -88,6 +92,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
       });
 
       if (_currentIndex >= _cards.length) {
+        _navigatingToResult = true;
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (_) => ResultScreen(
