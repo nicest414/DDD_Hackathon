@@ -241,14 +241,23 @@ class DecisionStore {
     async saveDecisionAndCard(decision, card) {
         const db = this.assertInitialized();
         await db.transaction(async (tx) => {
+            const decisionCardId = stringOrFallback(decision.cardId, '');
+            const cardIdFromCard = stringOrFallback(card.id, '');
+            if (decisionCardId && cardIdFromCard && decisionCardId !== cardIdFromCard) {
+                throw new Error(`Unable to save decision: decision.cardId=${decisionCardId} does not match card.id=${cardIdFromCard}`);
+            }
+            const cardId = decisionCardId || cardIdFromCard;
+            if (!cardId) {
+                throw new Error(`Unable to save decision: cardId is required for decision.id=${decision.id}`);
+            }
             let projectId = stringOrFallback(decision.projectId, '');
             if (!projectId) {
                 projectId = stringOrFallback(card.projectId, '');
                 if (!projectId) {
-                    const cardProject = await tx.query('SELECT project_id FROM decision_cards WHERE id = $1', [decision.cardId]);
+                    const cardProject = await tx.query('SELECT project_id FROM decision_cards WHERE id = $1', [cardId]);
                     const cardProjectId = cardProject.rows[0]?.project_id;
                     if (!cardProjectId) {
-                        throw new Error(`Unable to save decision: projectId could not be resolved for decision.cardId=${decision.cardId}, decision.id=${decision.id}, decision.projectId=${decision.projectId}`);
+                        throw new Error(`Unable to save decision: projectId could not be resolved for cardId=${cardId}, decision.id=${decision.id}, decision.projectId=${decision.projectId}`);
                     }
                     projectId = cardProjectId;
                 }
@@ -260,7 +269,7 @@ class DecisionStore {
            project_id = EXCLUDED.project_id,
            action = EXCLUDED.action,
            reason = EXCLUDED.reason,
-           created_at = EXCLUDED.created_at`, [decision.id, projectId, decision.cardId, decision.action, decision.reason, decision.createdAt]);
+           created_at = EXCLUDED.created_at`, [decision.id, projectId, cardId, decision.action, decision.reason, decision.createdAt]);
             const hook = stringOrFallback(card.hook, card.title);
             const payoff = stringOrFallback(card.payoff, card.predictedReward || card.description);
             const acceptLabel = stringOrFallback(card.acceptLabel, 'これ欲しい');
@@ -287,7 +296,7 @@ class DecisionStore {
            effort_score = EXCLUDED.effort_score,
            dopamine_score = EXCLUDED.dopamine_score,
            status = EXCLUDED.status`, [
-                card.id,
+                cardId,
                 projectId,
                 card.type,
                 card.title,
