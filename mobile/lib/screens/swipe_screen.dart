@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../models/decision_card.dart';
@@ -24,17 +26,28 @@ class _SwipeScreenState extends State<SwipeScreen> {
   final _cards = <DecisionCard>[];
   int _currentIndex = 0;
   bool _animating = false;
+  bool _navigatingToResult = false;
+  StreamSubscription<WsIncomingEvent>? _wsSub;
 
   @override
   void initState() {
     super.initState();
     _preloadCards();
+    _wsSub = _ws.events.listen((event) {
+      if (!mounted) return;
+      if (event is WsCardEvent && event.card.projectId == widget.project.id) {
+        setState(() => _cards.add(event.card));
+      }
+    });
     _tryConnect();
   }
 
   @override
   void dispose() {
-    _ws.disconnect();
+    _wsSub?.cancel();
+    if (!_navigatingToResult) {
+      _ws.disconnect();
+    }
     super.dispose();
   }
 
@@ -47,7 +60,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
   Future<void> _tryConnect() async {
     await _ws.connect(AppConfig.serverUrl);
     if (_ws.status == WsStatus.connected) {
-      _ws.sendStartSession(widget.project.toJson());
+      _ws.sendStartSession(widget.project);
     }
   }
 
@@ -78,7 +91,8 @@ class _SwipeScreenState extends State<SwipeScreen> {
         }
       });
 
-      if (_currentIndex >= _baseline.totalCards()) {
+      if (_currentIndex >= _cards.length) {
+        _navigatingToResult = true;
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (_) => ResultScreen(
@@ -94,19 +108,24 @@ class _SwipeScreenState extends State<SwipeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final total = _baseline.totalCards();
-    final progress = (_currentIndex + 1) / total;
+    final total = _cards.length;
+    final displayIndex = total > 0 ? _currentIndex.clamp(0, total - 1) : 0;
+    final progress = total > 0 ? (displayIndex + 1) / total : 0.0;
     final currentCard = _currentCard;
 
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
-            _Header(
-              projectTitle: widget.project.title,
-              current: _currentIndex + 1,
-              total: total,
-              progress: progress,
+            ValueListenableBuilder<WsStatus>(
+              valueListenable: _ws.statusNotifier,
+              builder: (context, wsStatus, child) => _Header(
+                projectTitle: widget.project.title,
+                current: total > 0 ? displayIndex + 1 : 0,
+                total: total,
+                progress: progress,
+                wsStatus: wsStatus,
+              ),
             ),
             Expanded(
               child: Padding(
@@ -143,12 +162,14 @@ class _Header extends StatelessWidget {
   final int current;
   final int total;
   final double progress;
+  final WsStatus wsStatus;
 
   const _Header({
     required this.projectTitle,
     required this.current,
     required this.total,
     required this.progress,
+    required this.wsStatus,
   });
 
   @override
@@ -164,6 +185,8 @@ class _Header extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          _WsStatusDot(wsStatus),
+          const SizedBox(width: 8),
           Text(
             '$current / $total',
             style: const TextStyle(fontSize: 13, color: Color(0xFF64748b)),
@@ -185,6 +208,25 @@ class _Header extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _WsStatusDot extends StatelessWidget {
+  final WsStatus status;
+  const _WsStatusDot(this.status);
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (status) {
+      WsStatus.connected => const Color(0xFF22c55e),
+      WsStatus.connecting => const Color(0xFFf59e0b),
+      WsStatus.disconnected => const Color(0xFF64748b),
+    };
+    return Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 }

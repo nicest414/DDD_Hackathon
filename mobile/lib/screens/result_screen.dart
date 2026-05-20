@@ -5,7 +5,13 @@ import 'package:flutter/services.dart';
 import '../models/decision.dart';
 import '../models/decision_card.dart';
 import '../models/project.dart';
-import '../services/websocket_service.dart';
+import '../services/websocket_service.dart'
+    show
+        WebSocketService,
+        WsIncomingEvent,
+        WsPreviewEvent,
+        WsPrEvent,
+        WsErrorEvent;
 import 'home_screen.dart';
 
 class ResultScreen extends StatefulWidget {
@@ -26,17 +32,14 @@ class ResultScreen extends StatefulWidget {
 
 class _ResultScreenState extends State<ResultScreen> {
   ResultEventSummary _result = const ResultEventSummary();
-  StreamSubscription<Map<String, dynamic>>? _wsSub;
+  StreamSubscription<WsIncomingEvent>? _wsSub;
 
   @override
   void initState() {
     super.initState();
-    _wsSub = WebSocketService().messages.listen((msg) {
-      if (!mounted || !_belongsToProject(msg)) {
-        return;
-      }
-
-      final next = _result.apply(msg);
+    _wsSub = WebSocketService().events.listen((event) {
+      if (!mounted || !_belongsToProject(event)) return;
+      final next = _result.apply(event);
       if (next != _result) {
         setState(() => _result = next);
       }
@@ -46,6 +49,7 @@ class _ResultScreenState extends State<ResultScreen> {
   @override
   void dispose() {
     _wsSub?.cancel();
+    WebSocketService().disconnect();
     super.dispose();
   }
 
@@ -54,9 +58,13 @@ class _ResultScreenState extends State<ResultScreen> {
   List<Decision> get _rejected =>
       widget.decisions.where((d) => d.action == 'rejected').toList();
 
-  bool _belongsToProject(Map<String, dynamic> msg) {
-    final projectId = msg['projectId'];
-    return projectId is String && projectId == widget.project.id;
+  bool _belongsToProject(WsIncomingEvent event) {
+    return switch (event) {
+      WsPreviewEvent e => e.projectId == widget.project.id,
+      WsPrEvent e => e.projectId == widget.project.id,
+      WsErrorEvent e => e.projectId == null || e.projectId == widget.project.id,
+      _ => false,
+    };
   }
 
   DecisionCard _cardFor(Decision d) => widget.cards.firstWhere(
@@ -277,39 +285,20 @@ class ResultEventSummary {
       previewUrl.isEmpty && prStatus.isEmpty && errorMessage.isEmpty;
   bool get hasError => errorMessage.isNotEmpty;
 
-  ResultEventSummary apply(Map<String, dynamic> msg) {
-    switch (msg['type']) {
-      case 'preview':
-        return _copyWith(
-          previewUrl: _stringValue(msg, 'url'),
-          errorMessage: '',
-        );
-      case 'pr':
-        return _copyWith(
-          prUrl: _stringValue(msg, 'url'),
-          prStatus: _stringValue(msg, 'status'),
-          branchName: _stringValue(msg, 'branchName'),
-          errorMessage: '',
-        );
-      case 'error':
-        return _copyWith(
-          errorMessage: _stringValue(msg, 'message', fallback: '不明なエラー'),
-        );
-      default:
-        return this;
-    }
-  }
-
-  String _stringValue(
-    Map<String, dynamic> msg,
-    String key, {
-    String fallback = '',
-  }) {
-    final value = msg[key];
-    if (value == null) {
-      return fallback;
-    }
-    return value is String ? value : value.toString();
+  ResultEventSummary apply(WsIncomingEvent event) {
+    return switch (event) {
+      WsPreviewEvent e => _copyWith(previewUrl: e.url, errorMessage: ''),
+      WsPrEvent e => _copyWith(
+        prUrl: e.url,
+        prStatus: e.status,
+        branchName: e.branchName,
+        errorMessage: '',
+      ),
+      WsErrorEvent e => _copyWith(
+        errorMessage: e.message.isNotEmpty ? e.message : '不明なエラー',
+      ),
+      _ => this,
+    };
   }
 
   ResultEventSummary _copyWith({
