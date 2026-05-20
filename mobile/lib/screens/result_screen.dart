@@ -49,6 +49,7 @@ class _ResultScreenState extends State<ResultScreen> {
   @override
   void dispose() {
     _wsSub?.cancel();
+    WebSocketService().disconnect();
     super.dispose();
   }
 

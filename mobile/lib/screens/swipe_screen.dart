@@ -44,7 +44,6 @@ class _SwipeScreenState extends State<SwipeScreen> {
   @override
   void dispose() {
     _wsSub?.cancel();
-    _ws.disconnect();
     super.dispose();
   }
 
@@ -117,7 +116,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
               valueListenable: _ws.statusNotifier,
               builder: (context, wsStatus, child) => _Header(
                 projectTitle: widget.project.title,
-                current: displayIndex + 1,
+                current: total > 0 ? displayIndex + 1 : 0,
                 total: total,
                 progress: progress,
                 wsStatus: wsStatus,
