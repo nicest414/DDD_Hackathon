@@ -17,7 +17,7 @@
     "commands": [
       {
         "command": "ddd.configureAI",
-        "title": "DDD: Configure AI Provider"
+        "title": "DDD: Configure AI Runtime"
       },
       {
         "command": "ddd.startSession",
@@ -42,7 +42,11 @@
         "ddd.ai.provider": {
           "type": "string",
           "default": "openai-compatible",
-          "description": "AI provider type"
+          "enum": [
+            "openai-compatible",
+            "baseline"
+          ],
+          "description": "AI runtime provider"
         },
         "ddd.ai.baseUrl": {
           "type": "string",

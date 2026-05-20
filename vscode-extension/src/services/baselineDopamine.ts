@@ -1,4 +1,5 @@
-import { DecisionCard, Decision, GeneratedApp } from '../models/types';
+import { DecisionCard, Decision, GeneratedApp, Project } from '../models/types';
+import { AIRuntimeAdapter } from './aiRuntime';
 
 type BaselineCard = Omit<DecisionCard, 'projectId' | 'status'>;
 
@@ -90,7 +91,20 @@ function normalizeCard(card: BaselineCard, projectId: string): DecisionCard {
   };
 }
 
-export class BaselineDopamine {
+export class BaselineDopamine implements AIRuntimeAdapter {
+  async generateNextCard(
+    project: Project,
+    decisions: Decision[],
+    _accepted: DecisionCard[],
+    _rejected: DecisionCard[],
+  ): Promise<DecisionCard | null> {
+    return this.getNextCard(project.id, decisions);
+  }
+
+  async generateApp(project: Project, _acceptedCards: DecisionCard[]): Promise<GeneratedApp> {
+    return this.getMockApp(project.id);
+  }
+
   getNextCard(projectId: string, decisions: Decision[]): DecisionCard | null {
     const usedIds = new Set(decisions.map((d) => d.cardId));
     const next = MOCK_CARDS.find((c) => !usedIds.has(c.id));

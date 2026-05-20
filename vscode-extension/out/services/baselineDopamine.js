@@ -89,6 +89,12 @@ function normalizeCard(card, projectId) {
     };
 }
 class BaselineDopamine {
+    async generateNextCard(project, decisions, _accepted, _rejected) {
+        return this.getNextCard(project.id, decisions);
+    }
+    async generateApp(project, _acceptedCards) {
+        return this.getMockApp(project.id);
+    }
     getNextCard(projectId, decisions) {
         const usedIds = new Set(decisions.map((d) => d.cardId));
         const next = MOCK_CARDS.find((c) => !usedIds.has(c.id));

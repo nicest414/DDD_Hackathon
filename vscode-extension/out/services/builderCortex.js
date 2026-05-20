@@ -35,12 +35,12 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BuilderCortex = void 0;
 const vscode = __importStar(require("vscode"));
-const aiAdapter_1 = require("./aiAdapter");
+const aiRuntime_1 = require("./aiRuntime");
 class BuilderCortex {
-    constructor(ws, ai, baseline, store, output) {
+    constructor(ws, ai, fallbackAI, store, output) {
         this.ws = ws;
         this.ai = ai;
-        this.baseline = baseline;
+        this.fallbackAI = fallbackAI;
         this.store = store;
         this.output = output;
         this.projects = new Map();
@@ -94,9 +94,9 @@ class BuilderCortex {
             app = await this.ai.generateApp(project, accepted);
         }
         catch (err) {
-            if (err instanceof aiAdapter_1.AIAdapterError) {
+            if (err instanceof aiRuntime_1.AIRuntimeAdapterError) {
                 this.output.appendLine('[DDD] AI failed, using baseline');
-                app = this.baseline.getMockApp(projectId);
+                app = await this.fallbackAI.generateApp(project, accepted);
             }
             else {
                 project.status = 'failed';
@@ -136,17 +136,20 @@ class BuilderCortex {
         if (!project) {
             return null;
         }
+        const accepted = allCards.filter((c) => decisions.find((d) => d.cardId === c.id && d.action === 'accepted'));
+        const rejected = allCards.filter((c) => decisions.find((d) => d.cardId === c.id && d.action === 'rejected'));
         try {
-            const accepted = allCards.filter((c) => decisions.find((d) => d.cardId === c.id && d.action === 'accepted'));
-            const rejected = allCards.filter((c) => decisions.find((d) => d.cardId === c.id && d.action === 'rejected'));
             const card = await this.ai.generateNextCard(project, decisions, accepted, rejected);
+            if (!card) {
+                return null;
+            }
             this.cards.get(projectId)?.push(card);
             await this.store.saveCard(card);
             return card;
         }
         catch (err) {
             if (fallback) {
-                const card = this.baseline.getNextCard(projectId, decisions);
+                const card = await this.fallbackAI.generateNextCard(project, decisions, accepted, rejected);
                 if (card) {
                     this.cards.get(projectId)?.push(card);
                     await this.store.saveCard(card);
