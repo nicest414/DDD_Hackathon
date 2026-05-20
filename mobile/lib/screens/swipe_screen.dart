@@ -105,7 +105,8 @@ class _SwipeScreenState extends State<SwipeScreen> {
   @override
   Widget build(BuildContext context) {
     final total = _cards.length;
-    final progress = total > 0 ? (_currentIndex + 1) / total : 0.0;
+    final displayIndex = total > 0 ? _currentIndex.clamp(0, total - 1) : 0;
+    final progress = total > 0 ? (displayIndex + 1) / total : 0.0;
     final currentCard = _currentCard;
 
     return Scaffold(
@@ -114,9 +115,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
           children: [
             ValueListenableBuilder<WsStatus>(
               valueListenable: _ws.statusNotifier,
-              builder: (_, wsStatus, _) => _Header(
+              builder: (context, wsStatus, child) => _Header(
                 projectTitle: widget.project.title,
-                current: _currentIndex + 1,
+                current: displayIndex + 1,
                 total: total,
                 progress: progress,
                 wsStatus: wsStatus,

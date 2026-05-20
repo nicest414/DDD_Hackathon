@@ -130,13 +130,27 @@ class WebSocketService {
           return null;
         }
       case 'preview':
-        return WsPreviewEvent(
-          projectId: (data['projectId'] as String?) ?? '',
-          url: (data['url'] as String?) ?? '',
-        );
+        final previewProjectId = data['projectId'] as String?;
+        final previewUrl = data['url'] as String?;
+        if (previewProjectId == null || previewUrl == null) {
+          developer.log(
+            'WebSocket preview event missing required fields',
+            name: 'WebSocketService',
+          );
+          return null;
+        }
+        return WsPreviewEvent(projectId: previewProjectId, url: previewUrl);
       case 'pr':
+        final prProjectId = data['projectId'] as String?;
+        if (prProjectId == null) {
+          developer.log(
+            'WebSocket pr event missing required fields',
+            name: 'WebSocketService',
+          );
+          return null;
+        }
         return WsPrEvent(
-          projectId: (data['projectId'] as String?) ?? '',
+          projectId: prProjectId,
           repositoryUrl: (data['repositoryUrl'] as String?) ?? '',
           branchName: (data['branchName'] as String?) ?? '',
           url: (data['url'] as String?) ?? '',
@@ -214,6 +228,8 @@ class WebSocketService {
 
   Future<void> dispose() async {
     await disconnect();
+    await _controller.close();
+    statusNotifier.dispose();
   }
 
   void _onDisconnect() {
