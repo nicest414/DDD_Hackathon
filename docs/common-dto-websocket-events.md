@@ -52,6 +52,16 @@ Flutter:
 
 Flutter側にfixtureカードを置いてよいが、それはWidget確認用に限定する。実セッションでは使用しない。
 
+### 仕様変更の扱い
+
+このIssue完了後、後続IssueではDTOフィールドやイベント名を勝手に増減しない。
+不足が見つかった場合は、まずこの仕様を更新してから実装へ反映する。
+
+### タイムスタンプ
+
+`createdAt` / `updatedAt` はISO 8601文字列に統一する。
+サンプルではUTCの `Z` 表記を使う。
+
 ## DTO仕様
 
 ### Project
@@ -184,7 +194,8 @@ Flutterがカードの採用/却下を送る。
 
 ```text
 VS Code拡張はDecisionを保存し、次のcardイベントを返す。
-カードが尽きた場合はsessionCompleteまたはpreviewに進む。
+カードが尽きた場合の専用イベントはMVPでは追加しない。
+MVPでは十分なBaselineカードを返すか、生成フェーズへ進めるUI操作で対応する。
 ```
 
 ### VS Code拡張 -> Flutter
@@ -231,6 +242,10 @@ VS Code拡張はDecisionを保存し、次のcardイベントを返す。
 #### pr
 
 GitHub PRまたはローカル保存結果を返す。
+
+```ts
+type PRStatus = 'created' | 'localSaved';
+```
 
 PR成功時:
 
@@ -288,6 +303,57 @@ UNKNOWN_ERROR
 ## イベント型まとめ
 
 ```ts
+type ErrorCode =
+  | 'INVALID_EVENT'
+  | 'PROJECT_NOT_FOUND'
+  | 'CARD_NOT_FOUND'
+  | 'AI_RUNTIME_UNAVAILABLE'
+  | 'AI_RESPONSE_INVALID'
+  | 'GITHUB_UNAVAILABLE'
+  | 'PREVIEW_FAILED'
+  | 'UNKNOWN_ERROR';
+
+interface StartSessionEvent {
+  type: 'startSession';
+  project: Project;
+}
+
+interface SwipeEvent {
+  type: 'swipe';
+  projectId: string;
+  cardId: string;
+  action: DecisionAction;
+  createdAt: string;
+}
+
+interface CardEvent {
+  type: 'card';
+  card: DecisionCard;
+}
+
+interface PreviewEvent {
+  type: 'preview';
+  projectId: string;
+  url: string;
+}
+
+interface PREvent {
+  type: 'pr';
+  projectId: string;
+  repositoryUrl: string;
+  branchName: string;
+  url: string;
+  status: PRStatus;
+}
+
+interface ErrorEvent {
+  type: 'error';
+  projectId?: string;
+  code: ErrorCode;
+  message: string;
+  recoverable: boolean;
+}
+
 type IncomingEvent =
   | StartSessionEvent
   | SwipeEvent;
@@ -312,16 +378,22 @@ Flutter -> VS Code: swipe
 VS Code -> Flutter: card
 ```
 
+カードが尽きた場合の専用イベントはMVPでは追加しない。
+MVPではVS Code拡張側が十分なBaselineカードを返すか、生成フェーズへ進めるUI操作で対応する。
+
 ### 生成・公開フロー
 
 ```text
 VS Code command: DDD: Generate App
 VS Code: ddd-spec.json / ddd-decisions.json生成
+VS Code -> Flutter: preview
 VS Code command: DDD: Publish to GitHub
 VS Code -> Flutter: pr
 ```
 
 ## バリデーション方針
+
+### 受信イベント
 
 VS Code拡張側で最低限以下を検証する。
 
@@ -331,10 +403,17 @@ VS Code拡張側で最低限以下を検証する。
 - `projectId` が空ではない
 - `cardId` が空ではない
 - `action` が `accepted` または `rejected`
-- `noveltyScore` / `effortScore` / `dopamineScore` は0〜1に丸める
-- `DecisionCard.type` が未知の場合は `feature` にフォールバックする
 
 不正イベントで拡張を落とさない。Output Channelに理由を出し、必要に応じて `error` イベントを返す。
+
+### 生成カード
+
+AI Runtime AdapterまたはBaselineが返す `DecisionCard` は、VS Code拡張側で最低限以下を正規化する。
+
+- 必須フィールドが欠けている場合はカード生成失敗として扱う
+- `noveltyScore` / `effortScore` / `dopamineScore` は0〜1に丸める
+- `DecisionCard.type` が未知の場合は `feature` にフォールバックする
+- `payload` がobjectでない場合は `{}` にフォールバックする
 
 ## 実装対象ファイル
 
@@ -358,12 +437,12 @@ vscode-extension/src/services/decisionStore.ts
 
 ## 完了条件
 
-- この仕様に沿ってFlutter側DTOを更新できる
-- この仕様に沿ってVS Code拡張側DTOを更新できる
-- `startSession` のサンプルJSONをVS Code拡張が受け取れる
-- `card` のサンプルJSONをFlutterが表示できる
-- `swipe` のサンプルJSONをVS Code拡張が保存対象として扱える
-- `pr` のサンプルJSONをFlutter結果画面で扱える
+- Project / DecisionCard / Decision / GeneratedApp のDTOが確定している
+- Flutter -> VS Code拡張 のIncoming Eventが確定している
+- VS Code拡張 -> Flutter のOutgoing Eventが確定している
+- エラーイベントの最小仕様が確定している
+- `startSession -> card -> swipe -> card` の基本フローが明文化されている
+- 後続のFlutter実装Issue、VS Code拡張実装Issue、AI Runtime実装Issueがこの仕様を参照できる
 - `docs/MVP_IMPLEMENTATION_PLAN.md` と矛盾していない
 
 ## 担当
@@ -383,8 +462,12 @@ vscode-extension/src/services/decisionStore.ts
 
 ## 後続Issue
 
-- Flutterの `DecisionCard` モデルを新DTOに対応させる
-- VS Code側 `DecisionCard` 型を新DTOに対応させる
-- WebSocketイベントの最低限バリデーションを追加する
-- `startSession` 後に最初の `card` を返す
-- `swipe` 後にDecision保存と次 `card` 送信を行う
+- [#11 VS Code拡張: 共通DTOとWebSocketイベント型を仕様に合わせる](https://github.com/nicest414/DDD_Hackathon/issues/11)
+- [#12 Flutter: Project / DecisionCard / Decision モデルを仕様に合わせる](https://github.com/nicest414/DDD_Hackathon/issues/12)
+- [#13 VS Code拡張: PGlite保存スキーマを新DTOに対応させる](https://github.com/nicest414/DDD_Hackathon/issues/13)
+- [#14 VS Code拡張: Baseline Dopamineのモックカードを新DTOに対応させる](https://github.com/nicest414/DDD_Hackathon/issues/14)
+- [#15 VS Code拡張: WebSocket受信イベントの最低限バリデーションとerror送信を実装する](https://github.com/nicest414/DDD_Hackathon/issues/15)
+- [#16 VS Code拡張: startSession受信後に最初のcardイベントを返す](https://github.com/nicest414/DDD_Hackathon/issues/16)
+- [#17 VS Code拡張: swipe受信後にDecision保存と次card送信を行う](https://github.com/nicest414/DDD_Hackathon/issues/17)
+- [#18 Flutter: WebSocketServiceをイベント仕様に合わせて整理する](https://github.com/nicest414/DDD_Hackathon/issues/18)
+- [#22 AI Runtime: AIRuntimeAdapterインターフェースと設定コマンドを整理する](https://github.com/nicest414/DDD_Hackathon/issues/22)

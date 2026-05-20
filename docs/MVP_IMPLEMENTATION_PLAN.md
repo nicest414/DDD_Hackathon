@@ -156,7 +156,7 @@ MVPの目的は、完成度の高い本番アプリを作ることではなく�
 
 最初に `DecisionCard`、`Decision`、WebSocketイベントのJSON形を固定する。
 
-詳細は [Issue 001: 共通DTOとWebSocketイベント仕様を確定する](issues/001-common-dto-websocket-events.md) を参照する。
+詳細は [Issue 001: 共通DTOとWebSocketイベント仕様を確定する](common-dto-websocket-events.md) を参照する。
 
 ```json
 {
