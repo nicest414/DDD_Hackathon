@@ -86,10 +86,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       });
       if (!apiKey) { return; }
 
+      await context.secrets.store('ddd.apiKey', apiKey);
       await cfg.update('provider', provider.value, vscode.ConfigurationTarget.Global);
       await cfg.update('baseUrl', baseUrl, vscode.ConfigurationTarget.Global);
       await cfg.update('model', model, vscode.ConfigurationTarget.Global);
-      await context.secrets.store('ddd.apiKey', apiKey);
 
       vscode.window.showInformationMessage('DDD: AI runtime configured');
     }),

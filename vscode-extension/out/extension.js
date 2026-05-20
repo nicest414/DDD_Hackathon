@@ -113,10 +113,10 @@ async function activate(context) {
         if (!apiKey) {
             return;
         }
+        await context.secrets.store('ddd.apiKey', apiKey);
         await cfg.update('provider', provider.value, vscode.ConfigurationTarget.Global);
         await cfg.update('baseUrl', baseUrl, vscode.ConfigurationTarget.Global);
         await cfg.update('model', model, vscode.ConfigurationTarget.Global);
-        await context.secrets.store('ddd.apiKey', apiKey);
         vscode.window.showInformationMessage('DDD: AI runtime configured');
     }), vscode.commands.registerCommand('ddd.startSession', () => {
         ws.start(3000);
