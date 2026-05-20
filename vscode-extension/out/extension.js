@@ -67,7 +67,7 @@ async function activate(context) {
         }
         else if (event.type === 'swipe') {
             const e = event;
-            await cortex.handleSwipe(e.projectId, e.cardId, e.action);
+            await cortex.handleSwipe(e.projectId, e.cardId, e.action, e.createdAt);
         }
     };
     // Status bar

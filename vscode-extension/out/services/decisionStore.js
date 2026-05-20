@@ -238,6 +238,82 @@ class DecisionStore {
        WHERE id = $2
          AND project_id = $3`, [decision.action, decision.cardId, projectId]);
     }
+    async saveDecisionAndCard(decision, card) {
+        const db = this.assertInitialized();
+        await db.transaction(async (tx) => {
+            const decisionCardId = stringOrFallback(decision.cardId, '');
+            const cardIdFromCard = stringOrFallback(card.id, '');
+            if (decisionCardId && cardIdFromCard && decisionCardId !== cardIdFromCard) {
+                throw new Error(`Unable to save decision: decision.cardId=${decisionCardId} does not match card.id=${cardIdFromCard}`);
+            }
+            const cardId = decisionCardId || cardIdFromCard;
+            if (!cardId) {
+                throw new Error(`Unable to save decision: cardId is required for decision.id=${decision.id}`);
+            }
+            let projectId = stringOrFallback(decision.projectId, '');
+            if (!projectId) {
+                projectId = stringOrFallback(card.projectId, '');
+                if (!projectId) {
+                    const cardProject = await tx.query('SELECT project_id FROM decision_cards WHERE id = $1', [cardId]);
+                    const cardProjectId = cardProject.rows[0]?.project_id;
+                    if (!cardProjectId) {
+                        throw new Error(`Unable to save decision: projectId could not be resolved for cardId=${cardId}, decision.id=${decision.id}, decision.projectId=${decision.projectId}`);
+                    }
+                    projectId = cardProjectId;
+                }
+            }
+            await tx.query(`INSERT INTO decisions (id, project_id, card_id, action, reason, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (card_id) DO UPDATE SET
+           id = EXCLUDED.id,
+           project_id = EXCLUDED.project_id,
+           action = EXCLUDED.action,
+           reason = EXCLUDED.reason,
+           created_at = EXCLUDED.created_at`, [decision.id, projectId, cardId, decision.action, decision.reason, decision.createdAt]);
+            const hook = stringOrFallback(card.hook, card.title);
+            const payoff = stringOrFallback(card.payoff, card.predictedReward || card.description);
+            const acceptLabel = stringOrFallback(card.acceptLabel, 'これ欲しい');
+            const rejectLabel = stringOrFallback(card.rejectLabel, '今はいらない');
+            const dopamineScore = numberOrFallback(card.dopamineScore, 0.5);
+            await tx.query(`INSERT INTO decision_cards (
+           id, project_id, type, title, hook, description, payoff,
+           accept_label, reject_label, payload, predicted_reward,
+           novelty_score, effort_score, dopamine_score, status
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13, $14, $15)
+         ON CONFLICT (id) DO UPDATE SET
+           project_id = EXCLUDED.project_id,
+           type = EXCLUDED.type,
+           title = EXCLUDED.title,
+           hook = EXCLUDED.hook,
+           description = EXCLUDED.description,
+           payoff = EXCLUDED.payoff,
+           accept_label = EXCLUDED.accept_label,
+           reject_label = EXCLUDED.reject_label,
+           payload = EXCLUDED.payload,
+           predicted_reward = EXCLUDED.predicted_reward,
+           novelty_score = EXCLUDED.novelty_score,
+           effort_score = EXCLUDED.effort_score,
+           dopamine_score = EXCLUDED.dopamine_score,
+           status = EXCLUDED.status`, [
+                cardId,
+                projectId,
+                card.type,
+                card.title,
+                hook,
+                card.description,
+                payoff,
+                acceptLabel,
+                rejectLabel,
+                JSON.stringify(card.payload),
+                card.predictedReward,
+                card.noveltyScore,
+                card.effortScore,
+                dopamineScore,
+                card.status,
+            ]);
+        });
+    }
     async getDecisions(projectId) {
         const result = await this.assertInitialized().query(`SELECT *
        FROM decisions

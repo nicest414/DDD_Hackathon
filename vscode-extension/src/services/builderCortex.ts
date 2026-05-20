@@ -17,16 +17,36 @@ export class BuilderCortex {
     private readonly output: vscode.OutputChannel,
   ) {}
 
-  async handleSwipe(projectId: string, cardId: string, action: 'accepted' | 'rejected'): Promise<void> {
+  async handleSwipe(
+    projectId: string,
+    cardId: string,
+    action: 'accepted' | 'rejected',
+    createdAt = new Date().toISOString(),
+  ): Promise<void> {
     if (!this.projects.has(projectId)) {
       this.output.appendLine(`[DDD] Swipe ignored: project ${projectId} not found`);
+      this.ws.send({
+        type: 'error',
+        projectId,
+        code: 'PROJECT_NOT_FOUND',
+        message: `Project ${projectId} was not found.`,
+        recoverable: true,
+      });
       return;
     }
 
     const list = this.decisions.get(projectId) ?? [];
     const projectCards = this.cards.get(projectId) ?? [];
-    if (!projectCards.find((card) => card.id === cardId)) {
+    const swipedCard = projectCards.find((card) => card.id === cardId);
+    if (!swipedCard) {
       this.output.appendLine(`[DDD] Swipe ignored: card ${cardId} not found for project ${projectId}`);
+      this.ws.send({
+        type: 'error',
+        projectId,
+        code: 'CARD_NOT_FOUND',
+        message: `Card ${cardId} was not found for project ${projectId}.`,
+        recoverable: true,
+      });
       return;
     }
 
@@ -36,13 +56,23 @@ export class BuilderCortex {
       cardId,
       action,
       reason: '',
-      createdAt: new Date().toISOString(),
+      createdAt,
     };
+
+    const savedCard: DecisionCard = { ...swipedCard, status: action };
+    try {
+      await this.store.saveDecisionAndCard(decision, savedCard);
+    } catch (err) {
+      this.output.appendLine(
+        `[DDD] Failed to persist swipe: ${this._errorMessage(err)}; projectId=${projectId}; cardId=${cardId}`,
+      );
+      throw err;
+    }
 
     const updatedList = list.filter((d) => d.cardId !== cardId);
     updatedList.push(decision);
     this.decisions.set(projectId, updatedList);
-    await this.store.saveDecision(decision);
+    swipedCard.status = action;
 
     this.output.appendLine(`[DDD] Decision: ${action} → ${cardId}`);
 
@@ -142,5 +172,9 @@ export class BuilderCortex {
       }
       throw err;
     }
+  }
+
+  private _errorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : String(err);
   }
 }
