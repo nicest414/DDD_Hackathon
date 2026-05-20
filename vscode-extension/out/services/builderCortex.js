@@ -81,12 +81,18 @@ class BuilderCortex {
             reason: '',
             createdAt,
         };
+        const savedCard = { ...swipedCard, status: action };
+        try {
+            await this.store.saveDecisionAndCard(decision, savedCard);
+        }
+        catch (err) {
+            this.output.appendLine(`[DDD] Failed to persist swipe: ${this._errorMessage(err)}; projectId=${projectId}; cardId=${cardId}`);
+            throw err;
+        }
         const updatedList = list.filter((d) => d.cardId !== cardId);
         updatedList.push(decision);
         this.decisions.set(projectId, updatedList);
         swipedCard.status = action;
-        await this.store.saveDecision(decision);
-        await this.store.saveCard(swipedCard);
         this.output.appendLine(`[DDD] Decision: ${action} → ${cardId}`);
         // Generate next card
         const nextCard = await this._nextCard(projectId);
@@ -175,6 +181,9 @@ class BuilderCortex {
             }
             throw err;
         }
+    }
+    _errorMessage(err) {
+        return err instanceof Error ? err.message : String(err);
     }
 }
 exports.BuilderCortex = BuilderCortex;

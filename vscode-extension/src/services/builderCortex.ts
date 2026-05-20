@@ -59,12 +59,20 @@ export class BuilderCortex {
       createdAt,
     };
 
+    const savedCard: DecisionCard = { ...swipedCard, status: action };
+    try {
+      await this.store.saveDecisionAndCard(decision, savedCard);
+    } catch (err) {
+      this.output.appendLine(
+        `[DDD] Failed to persist swipe: ${this._errorMessage(err)}; projectId=${projectId}; cardId=${cardId}`,
+      );
+      throw err;
+    }
+
     const updatedList = list.filter((d) => d.cardId !== cardId);
     updatedList.push(decision);
     this.decisions.set(projectId, updatedList);
     swipedCard.status = action;
-    await this.store.saveDecision(decision);
-    await this.store.saveCard(swipedCard);
 
     this.output.appendLine(`[DDD] Decision: ${action} → ${cardId}`);
 
@@ -164,5 +172,9 @@ export class BuilderCortex {
       }
       throw err;
     }
+  }
+
+  private _errorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : String(err);
   }
 }
