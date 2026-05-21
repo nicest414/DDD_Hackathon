@@ -44,6 +44,7 @@
           "default": "openai-compatible",
           "enum": [
             "openai-compatible",
+            "codex-cli",
             "baseline"
           ],
           "description": "AI runtime provider"

@@ -53,6 +53,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const provider = await vscode.window.showQuickPick(
         [
           { label: 'OpenAI-compatible API', value: 'openai-compatible' },
+          { label: 'Codex CLI (codex exec)', value: 'codex-cli' },
           { label: 'Baseline mock', value: 'baseline' },
         ],
         {
@@ -66,6 +67,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (provider.value === 'baseline') {
         await cfg.update('provider', provider.value, vscode.ConfigurationTarget.Global);
         vscode.window.showInformationMessage('DDD: AI runtime configured');
+        return;
+      }
+
+      if (provider.value === 'codex-cli') {
+        await cfg.update('provider', provider.value, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage('DDD: AI runtime configured (Codex CLI)');
         return;
       }
 
