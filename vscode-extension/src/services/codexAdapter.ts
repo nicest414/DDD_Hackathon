@@ -1,7 +1,7 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as vscode from 'vscode';
-import { AIRuntimeAdapterError, BaseAIAdapter } from './aiRuntime';
+import { AIRuntimeAdapterError, BaseAIAdapter, extractFirstJsonObject } from './aiRuntime';
 
 const execFileAsync = promisify(execFile);
 
@@ -22,14 +22,11 @@ export class CodexCLIAdapter extends BaseAIAdapter {
   }
 
   protected parseJson(text: string): Record<string, unknown> {
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) {
-      throw new AIRuntimeAdapterError(`No JSON found in codex output: ${text.slice(0, 200)}`);
-    }
+    const json = extractFirstJsonObject(text, 'codex');
     try {
-      return JSON.parse(match[0]) as Record<string, unknown>;
+      return JSON.parse(json) as Record<string, unknown>;
     } catch {
-      throw new AIRuntimeAdapterError(`Invalid JSON in codex output: ${match[0].slice(0, 200)}`);
+      throw new AIRuntimeAdapterError(`Invalid JSON in codex output: ${json.slice(0, 200)}`);
     }
   }
 }

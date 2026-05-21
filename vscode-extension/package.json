@@ -44,6 +44,7 @@
           "default": "openai-compatible",
           "enum": [
             "openai-compatible",
+            "claude-code",
             "codex-cli",
             "baseline"
           ],
