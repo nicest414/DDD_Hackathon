@@ -4,10 +4,12 @@ import { AIRuntimeAdapter, AIRuntimeProvider } from './aiRuntime';
 import { BaselineDopamine } from './baselineDopamine';
 import { OpenAICompatibleAdapter } from './openaiAdapter';
 import { CodexCLIAdapter } from './codexAdapter';
+import { ClaudeCodeAdapter } from './claudeCodeAdapter';
 
 export class AIRuntimeDispatcher implements AIRuntimeAdapter {
   private readonly openAI: OpenAICompatibleAdapter;
   private readonly codex: CodexCLIAdapter;
+  private readonly claude: ClaudeCodeAdapter;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -15,6 +17,7 @@ export class AIRuntimeDispatcher implements AIRuntimeAdapter {
   ) {
     this.openAI = new OpenAICompatibleAdapter(context);
     this.codex = new CodexCLIAdapter();
+    this.claude = new ClaudeCodeAdapter();
   }
 
   async generateNextCard(
@@ -35,6 +38,7 @@ export class AIRuntimeDispatcher implements AIRuntimeAdapter {
     const provider = cfg.get<AIRuntimeProvider>('provider') ?? 'openai-compatible';
     if (provider === 'baseline') { return this.baseline; }
     if (provider === 'codex-cli') { return this.codex; }
+    if (provider === 'claude-code') { return this.claude; }
     return this.openAI;
   }
 }

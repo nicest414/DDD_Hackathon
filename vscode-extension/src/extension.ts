@@ -53,6 +53,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const provider = await vscode.window.showQuickPick(
         [
           { label: 'OpenAI-compatible API', value: 'openai-compatible' },
+          { label: 'Claude Code (claude -p)', value: 'claude-code' },
           { label: 'Codex CLI (codex exec)', value: 'codex-cli' },
           { label: 'Baseline mock', value: 'baseline' },
         ],
@@ -63,6 +64,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!provider) { return; }
 
       const cfg = vscode.workspace.getConfiguration('ddd.ai');
+
+      if (provider.value === 'claude-code') {
+        await cfg.update('provider', provider.value, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage('DDD: AI runtime configured (Claude Code)');
+        return;
+      }
 
       if (provider.value === 'codex-cli') {
         await cfg.update('provider', provider.value, vscode.ConfigurationTarget.Global);
@@ -95,13 +102,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await cfg.update('baseUrl', baseUrl, vscode.ConfigurationTarget.Global);
         await cfg.update('model', model, vscode.ConfigurationTarget.Global);
 
-        vscode.window.showInformationMessage('DDD: AI runtime configured');
+        vscode.window.showInformationMessage('DDD: AI runtime configured (OpenAI-compatible)');
+        return;
       }
 
-      // Baseline has no config
+      // baseline: no extra config
       await cfg.update('provider', provider.value, vscode.ConfigurationTarget.Global);
-      vscode.window.showInformationMessage('DDD: AI runtime configured');
-      return;      
+      vscode.window.showInformationMessage('DDD: No AI runtime configured, using baseline mock implementation');
     }),
 
     vscode.commands.registerCommand('ddd.startSession', () => {
