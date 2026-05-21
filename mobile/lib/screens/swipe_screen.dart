@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../models/decision_card.dart';
@@ -24,20 +26,30 @@ class _SwipeScreenState extends State<SwipeScreen> {
   final _cards = <DecisionCard>[];
   int _currentIndex = 0;
   bool _animating = false;
+  bool _navigatingToResult = false;
+  StreamSubscription<WsIncomingEvent>? _wsSub;
 
   @override
   void initState() {
     super.initState();
     _preloadCards();
+    _wsSub = _ws.events.listen((event) {
+      if (!mounted) return;
+      if (event is WsCardEvent && event.card.projectId == widget.project.id) {
+        setState(() => _cards.add(event.card));
+      }
+    });
     _tryConnect();
     // DEBUG: 受信イベントをログ＆SnackBarで表示
-    _ws.messages.listen((data) {
-      debugPrint('[DDD] received: $data');
+    _ws.events.listen((event) {
+      debugPrint('[DDD] received: $event');
       if (!mounted) return;
-      final type = data['type'] as String?;
-      final msg = type == 'card'
-          ? 'card受信: ${data['card']?['title'] ?? '?'}'
-          : 'イベント受信: $type';
+      final msg = switch (event) {
+        WsCardEvent e => 'card受信: ${e.card.title}',
+        WsPreviewEvent _ => 'イベント受信: preview',
+        WsPrEvent _ => 'イベント受信: pr',
+        WsErrorEvent e => 'エラー受信: ${e.code}',
+      };
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(msg), duration: const Duration(seconds: 3)),
       );
@@ -47,7 +59,10 @@ class _SwipeScreenState extends State<SwipeScreen> {
 
   @override
   void dispose() {
-    _ws.disconnect();
+    _wsSub?.cancel();
+    if (!_navigatingToResult) {
+      _ws.disconnect();
+    }
     super.dispose();
   }
 
@@ -60,7 +75,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
   Future<void> _tryConnect() async {
     await _ws.connect(AppConfig.serverUrl);
     if (_ws.status == WsStatus.connected) {
-      _ws.sendStartSession(widget.project.toJson());
+      _ws.sendStartSession(widget.project);
       // DEBUG: 接続成功通知
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -95,11 +110,12 @@ class _SwipeScreenState extends State<SwipeScreen> {
     final card = _currentCard!;
     final decision = Decision(
       id: const Uuid().v4(),
+      projectId: widget.project.id,
       cardId: card.id,
       action: action,
     );
     _decisions.add(decision);
-    _ws.sendDecision(decision, widget.project.id);
+    _ws.sendDecision(decision);
 
     Future.delayed(const Duration(milliseconds: 350), () {
       if (!mounted) return;
@@ -111,7 +127,8 @@ class _SwipeScreenState extends State<SwipeScreen> {
         }
       });
 
-      if (_currentIndex >= _baseline.totalCards()) {
+      if (_currentIndex >= _cards.length) {
+        _navigatingToResult = true;
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (_) => ResultScreen(
@@ -127,18 +144,24 @@ class _SwipeScreenState extends State<SwipeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final total = _baseline.totalCards();
-    final progress = (_currentIndex + 1) / total;
+    final total = _cards.length;
+    final displayIndex = total > 0 ? _currentIndex.clamp(0, total - 1) : 0;
+    final progress = total > 0 ? (displayIndex + 1) / total : 0.0;
+    final currentCard = _currentCard;
 
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
-            _Header(
-              projectTitle: widget.project.title,
-              current: _currentIndex + 1,
-              total: total,
-              progress: progress,
+            ValueListenableBuilder<WsStatus>(
+              valueListenable: _ws.statusNotifier,
+              builder: (context, wsStatus, child) => _Header(
+                projectTitle: widget.project.title,
+                current: total > 0 ? displayIndex + 1 : 0,
+                total: total,
+                progress: progress,
+                wsStatus: wsStatus,
+              ),
             ),
             Expanded(
               child: Padding(
@@ -153,12 +176,13 @@ class _SwipeScreenState extends State<SwipeScreen> {
                       onReject: () => _decide('rejected'),
                     ),
                     const SizedBox(height: 20),
-                    _SwipeHints(),
+                    _SwipeHints(card: currentCard),
                   ],
                 ),
               ),
             ),
             _ActionButtons(
+              card: currentCard,
               onReject: () => _decide('rejected'),
               onAdopt: () => _decide('accepted'),
             ),
@@ -174,12 +198,14 @@ class _Header extends StatelessWidget {
   final int current;
   final int total;
   final double progress;
+  final WsStatus wsStatus;
 
   const _Header({
     required this.projectTitle,
     required this.current,
     required this.total,
     required this.progress,
+    required this.wsStatus,
   });
 
   @override
@@ -195,6 +221,8 @@ class _Header extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          _WsStatusDot(wsStatus),
+          const SizedBox(width: 8),
           Text(
             '$current / $total',
             style: const TextStyle(fontSize: 13, color: Color(0xFF64748b)),
@@ -216,6 +244,25 @@ class _Header extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _WsStatusDot extends StatelessWidget {
+  final WsStatus status;
+  const _WsStatusDot(this.status);
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (status) {
+      WsStatus.connected => const Color(0xFF22c55e),
+      WsStatus.connecting => const Color(0xFFf59e0b),
+      WsStatus.disconnected => const Color(0xFF64748b),
+    };
+    return Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 }
@@ -287,17 +334,28 @@ class _CardStack extends StatelessWidget {
 }
 
 class _SwipeHints extends StatelessWidget {
+  final DecisionCard? card;
+  const _SwipeHints({required this.card});
+
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        _Hint(label: '却下', icon: '✕', color: const Color(0xFFef4444)),
-        _Hint(
-          label: '採用',
-          icon: '✓',
-          color: const Color(0xFF22c55e),
-          reverse: true,
+        Flexible(
+          child: _Hint(
+            label: card?.rejectLabel ?? '却下',
+            icon: '✕',
+            color: const Color(0xFFef4444),
+          ),
+        ),
+        Flexible(
+          child: _Hint(
+            label: card?.acceptLabel ?? '採用',
+            icon: '✓',
+            color: const Color(0xFF22c55e),
+            reverse: true,
+          ),
         ),
       ],
     );
@@ -331,12 +389,16 @@ class _Hint extends StatelessWidget {
         ),
       ),
       const SizedBox(width: 6),
-      Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
+      Flexible(
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: color,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     ];
@@ -348,9 +410,14 @@ class _Hint extends StatelessWidget {
 }
 
 class _ActionButtons extends StatelessWidget {
+  final DecisionCard? card;
   final VoidCallback onReject;
   final VoidCallback onAdopt;
-  const _ActionButtons({required this.onReject, required this.onAdopt});
+  const _ActionButtons({
+    required this.card,
+    required this.onReject,
+    required this.onAdopt,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -359,18 +426,24 @@ class _ActionButtons extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _CircleButton(
-            icon: '✕',
-            color: const Color(0xFFef4444),
-            onTap: onReject,
-            size: 64,
+          Expanded(
+            child: _ChoiceButton(
+              icon: '✕',
+              label: card?.rejectLabel ?? '却下',
+              color: const Color(0xFFef4444),
+              onTap: onReject,
+              size: 64,
+            ),
           ),
           const SizedBox(width: 24),
-          _CircleButton(
-            icon: '✓',
-            color: const Color(0xFF22c55e),
-            onTap: onAdopt,
-            size: 64,
+          Expanded(
+            child: _ChoiceButton(
+              icon: '✓',
+              label: card?.acceptLabel ?? '採用',
+              color: const Color(0xFF22c55e),
+              onTap: onAdopt,
+              size: 64,
+            ),
           ),
         ],
       ),
@@ -378,13 +451,15 @@ class _ActionButtons extends StatelessWidget {
   }
 }
 
-class _CircleButton extends StatelessWidget {
+class _ChoiceButton extends StatelessWidget {
   final String icon;
+  final String label;
   final Color color;
   final VoidCallback onTap;
   final double size;
-  const _CircleButton({
+  const _ChoiceButton({
     required this.icon,
+    required this.label,
     required this.color,
     required this.onTap,
     required this.size,
@@ -394,19 +469,36 @@ class _CircleButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: color, width: 2),
-        ),
-        child: Center(
-          child: Text(
-            icon,
-            style: TextStyle(color: color, fontSize: size * 0.38),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: color, width: 2),
+            ),
+            child: Center(
+              child: Text(
+                icon,
+                style: TextStyle(color: color, fontSize: size * 0.38),
+              ),
+            ),
           ),
-        ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import { Project, Decision, DecisionCard, GeneratedApp } from '../models/types';
-import { AIAdapter, AIAdapterError } from './aiAdapter';
-import { BaselineDopamine } from './baselineDopamine';
+import { AIRuntimeAdapter, AIRuntimeAdapterError } from './aiRuntime';
 import { DDDWebSocketServer } from './websocketServer';
 import { DecisionStore } from './decisionStore';
 
@@ -12,37 +11,68 @@ export class BuilderCortex {
 
   constructor(
     private readonly ws: DDDWebSocketServer,
-    private readonly ai: AIAdapter,
-    private readonly baseline: BaselineDopamine,
+    private readonly ai: AIRuntimeAdapter,
+    private readonly fallbackAI: AIRuntimeAdapter,
     private readonly store: DecisionStore,
     private readonly output: vscode.OutputChannel,
   ) {}
 
-  async handleSwipe(projectId: string, cardId: string, action: 'accepted' | 'rejected'): Promise<void> {
+  async handleSwipe(
+    projectId: string,
+    cardId: string,
+    action: 'accepted' | 'rejected',
+    createdAt = new Date().toISOString(),
+  ): Promise<void> {
     if (!this.projects.has(projectId)) {
       this.output.appendLine(`[DDD] Swipe ignored: project ${projectId} not found`);
+      this.ws.send({
+        type: 'error',
+        projectId,
+        code: 'PROJECT_NOT_FOUND',
+        message: `Project ${projectId} was not found.`,
+        recoverable: true,
+      });
       return;
     }
 
     const list = this.decisions.get(projectId) ?? [];
     const projectCards = this.cards.get(projectId) ?? [];
-    if (!projectCards.find((card) => card.id === cardId)) {
+    const swipedCard = projectCards.find((card) => card.id === cardId);
+    if (!swipedCard) {
       this.output.appendLine(`[DDD] Swipe ignored: card ${cardId} not found for project ${projectId}`);
+      this.ws.send({
+        type: 'error',
+        projectId,
+        code: 'CARD_NOT_FOUND',
+        message: `Card ${cardId} was not found for project ${projectId}.`,
+        recoverable: true,
+      });
       return;
     }
 
     const decision: Decision = {
       id: `d-${Date.now()}`,
+      projectId,
       cardId,
       action,
       reason: '',
-      createdAt: new Date().toISOString(),
+      createdAt,
     };
+
+    const savedCard: DecisionCard = { ...swipedCard, status: action };
+    try {
+      await this.store.saveDecisionAndCard(decision, savedCard);
+    } catch (err) {
+      this.output.appendLine(
+        `[DDD] Failed to persist swipe: ${this._errorMessage(err)}; projectId=${projectId}; cardId=${cardId}`,
+      );
+      throw err;
+    }
 
     const updatedList = list.filter((d) => d.cardId !== cardId);
     updatedList.push(decision);
     this.decisions.set(projectId, updatedList);
-    await this.store.saveDecision(decision);
+    swipedCard.status = action;
 
     this.output.appendLine(`[DDD] Decision: ${action} → ${cardId}`);
 
@@ -74,9 +104,9 @@ export class BuilderCortex {
     try {
       app = await this.ai.generateApp(project, accepted);
     } catch (err) {
-      if (err instanceof AIAdapterError) {
+      if (err instanceof AIRuntimeAdapterError) {
         this.output.appendLine('[DDD] AI failed, using baseline');
-        app = this.baseline.getMockApp(projectId);
+        app = await this.fallbackAI.generateApp(project, accepted);
       } else {
         project.status = 'failed';
         await this.store.saveProject(project);
@@ -102,8 +132,12 @@ export class BuilderCortex {
   async registerProject(project: Project): Promise<void> {
     this.projects.set(project.id, project);
     await this.store.saveProject(project);
-    this.decisions.set(project.id, []);
-    this.cards.set(project.id, []);
+    const [decisions, cards] = await Promise.all([
+      this.store.getDecisions(project.id),
+      this.store.getCards(project.id),
+    ]);
+    this.decisions.set(project.id, decisions);
+    this.cards.set(project.id, cards);
   }
 
   async startProject(project: Project): Promise<void> {
@@ -125,18 +159,20 @@ export class BuilderCortex {
 
     if (!project) { return null; }
 
+    const accepted = allCards.filter((c) =>
+      decisions.find((d) => d.cardId === c.id && d.action === 'accepted'));
+    const rejected = allCards.filter((c) =>
+      decisions.find((d) => d.cardId === c.id && d.action === 'rejected'));
+
     try {
-      const accepted = allCards.filter((c) =>
-        decisions.find((d) => d.cardId === c.id && d.action === 'accepted'));
-      const rejected = allCards.filter((c) =>
-        decisions.find((d) => d.cardId === c.id && d.action === 'rejected'));
       const card = await this.ai.generateNextCard(project, decisions, accepted, rejected);
+      if (!card) { return null; }
       this.cards.get(projectId)?.push(card);
       await this.store.saveCard(card);
       return card;
     } catch (err) {
       if (fallback) {
-        const card = this.baseline.getNextCard(projectId, decisions);
+        const card = await this.fallbackAI.generateNextCard(project, decisions, accepted, rejected);
         if (card) {
           this.cards.get(projectId)?.push(card);
           await this.store.saveCard(card);
@@ -145,5 +181,9 @@ export class BuilderCortex {
       }
       throw err;
     }
+  }
+
+  private _errorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : String(err);
   }
 }

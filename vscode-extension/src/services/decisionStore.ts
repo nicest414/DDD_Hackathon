@@ -28,6 +28,15 @@ function parseJsonRecord(value: unknown): Record<string, unknown> {
   return asRecord(value);
 }
 
+function stringOrFallback(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.trim().length > 0 ? value : fallback;
+}
+
+function numberOrFallback(value: unknown, fallback: number): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
 function readLegacyStore(filePath: string): LegacyStoreData | null {
   if (!fs.existsSync(filePath)) {
     return null;
@@ -75,16 +84,22 @@ export class DecisionStore {
         project_id text NOT NULL,
         type text NOT NULL,
         title text NOT NULL,
+        hook text NOT NULL,
         description text NOT NULL,
+        payoff text NOT NULL,
+        accept_label text NOT NULL,
+        reject_label text NOT NULL,
         payload jsonb NOT NULL,
         predicted_reward text NOT NULL,
         novelty_score double precision NOT NULL,
         effort_score double precision NOT NULL,
+        dopamine_score double precision NOT NULL,
         status text NOT NULL
       );
 
       CREATE TABLE IF NOT EXISTS decisions (
         id text PRIMARY KEY,
+        project_id text NOT NULL,
         card_id text NOT NULL UNIQUE,
         action text NOT NULL,
         reason text NOT NULL,
@@ -102,6 +117,36 @@ export class DecisionStore {
         pull_request_url text NOT NULL,
         updated_at text NOT NULL
       );
+    `);
+
+    await db.exec(`
+      ALTER TABLE decision_cards ADD COLUMN IF NOT EXISTS hook text NOT NULL DEFAULT '';
+      ALTER TABLE decision_cards ADD COLUMN IF NOT EXISTS payoff text NOT NULL DEFAULT '';
+      ALTER TABLE decision_cards ADD COLUMN IF NOT EXISTS accept_label text NOT NULL DEFAULT 'これ欲しい';
+      ALTER TABLE decision_cards ADD COLUMN IF NOT EXISTS reject_label text NOT NULL DEFAULT '今はいらない';
+      ALTER TABLE decision_cards ADD COLUMN IF NOT EXISTS dopamine_score double precision NOT NULL DEFAULT 0.5;
+      ALTER TABLE decisions ADD COLUMN IF NOT EXISTS project_id text NOT NULL DEFAULT '';
+    `);
+
+    await db.exec(`
+      UPDATE decisions
+      SET project_id = decision_cards.project_id
+      FROM decision_cards
+      WHERE decisions.card_id = decision_cards.id
+        AND decisions.project_id = '';
+    `);
+
+    await db.exec(`
+      UPDATE decision_cards
+      SET hook = title
+      WHERE hook = '';
+
+      UPDATE decision_cards
+      SET payoff = CASE
+        WHEN predicted_reward <> '' THEN predicted_reward
+        ELSE description
+      END
+      WHERE payoff = '';
     `);
   }
 
@@ -168,35 +213,154 @@ export class DecisionStore {
   }
 
   async saveDecision(decision: Decision): Promise<void> {
+    let projectId = stringOrFallback(decision.projectId, '');
+    if (!projectId) {
+      const card = await this.assertInitialized().query<{ project_id: string }>(
+        'SELECT project_id FROM decision_cards WHERE id = $1',
+        [decision.cardId],
+      );
+      const cardProjectId = card.rows[0]?.project_id;
+      if (!cardProjectId) {
+        throw new Error(
+          `Unable to save decision: projectId could not be resolved for decision.cardId=${decision.cardId}, decision.id=${decision.id}, decision.projectId=${decision.projectId}`,
+        );
+      }
+      projectId = cardProjectId;
+    }
+
     await this.assertInitialized().query(
-      `INSERT INTO decisions (id, card_id, action, reason, created_at)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO decisions (id, project_id, card_id, action, reason, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (card_id) DO UPDATE SET
          id = EXCLUDED.id,
+         project_id = EXCLUDED.project_id,
          action = EXCLUDED.action,
          reason = EXCLUDED.reason,
          created_at = EXCLUDED.created_at`,
-      [decision.id, decision.cardId, decision.action, decision.reason, decision.createdAt],
+      [decision.id, projectId, decision.cardId, decision.action, decision.reason, decision.createdAt],
     );
+
+    await this.assertInitialized().query(
+      `UPDATE decision_cards
+       SET status = $1
+       WHERE id = $2
+         AND project_id = $3`,
+      [decision.action, decision.cardId, projectId],
+    );
+  }
+
+  async saveDecisionAndCard(decision: Decision, card: DecisionCard): Promise<void> {
+    const db = this.assertInitialized();
+    await db.transaction(async (tx) => {
+      const decisionCardId = stringOrFallback(decision.cardId, '');
+      const cardIdFromCard = stringOrFallback(card.id, '');
+      if (decisionCardId && cardIdFromCard && decisionCardId !== cardIdFromCard) {
+        throw new Error(
+          `Unable to save decision: decision.cardId=${decisionCardId} does not match card.id=${cardIdFromCard}`,
+        );
+      }
+      const cardId = decisionCardId || cardIdFromCard;
+      if (!cardId) {
+        throw new Error(`Unable to save decision: cardId is required for decision.id=${decision.id}`);
+      }
+
+      let projectId = stringOrFallback(decision.projectId, '');
+      if (!projectId) {
+        projectId = stringOrFallback(card.projectId, '');
+        if (!projectId) {
+          const cardProject = await tx.query<{ project_id: string }>(
+            'SELECT project_id FROM decision_cards WHERE id = $1',
+            [cardId],
+          );
+          const cardProjectId = cardProject.rows[0]?.project_id;
+          if (!cardProjectId) {
+            throw new Error(
+              `Unable to save decision: projectId could not be resolved for cardId=${cardId}, decision.id=${decision.id}, decision.projectId=${decision.projectId}`,
+            );
+          }
+          projectId = cardProjectId;
+        }
+      }
+
+      await tx.query(
+        `INSERT INTO decisions (id, project_id, card_id, action, reason, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (card_id) DO UPDATE SET
+           id = EXCLUDED.id,
+           project_id = EXCLUDED.project_id,
+           action = EXCLUDED.action,
+           reason = EXCLUDED.reason,
+           created_at = EXCLUDED.created_at`,
+        [decision.id, projectId, cardId, decision.action, decision.reason, decision.createdAt],
+      );
+
+      const hook = stringOrFallback(card.hook, card.title);
+      const payoff = stringOrFallback(card.payoff, card.predictedReward || card.description);
+      const acceptLabel = stringOrFallback(card.acceptLabel, 'これ欲しい');
+      const rejectLabel = stringOrFallback(card.rejectLabel, '今はいらない');
+      const dopamineScore = numberOrFallback(card.dopamineScore, 0.5);
+
+      await tx.query(
+        `INSERT INTO decision_cards (
+           id, project_id, type, title, hook, description, payoff,
+           accept_label, reject_label, payload, predicted_reward,
+           novelty_score, effort_score, dopamine_score, status
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13, $14, $15)
+         ON CONFLICT (id) DO UPDATE SET
+           project_id = EXCLUDED.project_id,
+           type = EXCLUDED.type,
+           title = EXCLUDED.title,
+           hook = EXCLUDED.hook,
+           description = EXCLUDED.description,
+           payoff = EXCLUDED.payoff,
+           accept_label = EXCLUDED.accept_label,
+           reject_label = EXCLUDED.reject_label,
+           payload = EXCLUDED.payload,
+           predicted_reward = EXCLUDED.predicted_reward,
+           novelty_score = EXCLUDED.novelty_score,
+           effort_score = EXCLUDED.effort_score,
+           dopamine_score = EXCLUDED.dopamine_score,
+           status = EXCLUDED.status`,
+        [
+          cardId,
+          projectId,
+          card.type,
+          card.title,
+          hook,
+          card.description,
+          payoff,
+          acceptLabel,
+          rejectLabel,
+          JSON.stringify(card.payload),
+          card.predictedReward,
+          card.noveltyScore,
+          card.effortScore,
+          dopamineScore,
+          card.status,
+        ],
+      );
+    });
   }
 
   async getDecisions(projectId: string): Promise<Decision[]> {
     const result = await this.assertInitialized().query<{
       id: string;
+      project_id: string;
       card_id: string;
       action: Decision['action'];
       reason: string;
       created_at: string;
     }>(
-      `SELECT d.*
-       FROM decisions d
-       JOIN decision_cards c ON c.id = d.card_id
-       WHERE c.project_id = $1
-       ORDER BY d.created_at ASC`,
+      `SELECT *
+       FROM decisions
+       WHERE project_id = $1
+       ORDER BY created_at ASC`,
       [projectId],
     );
     return result.rows.map((row) => ({
       id: row.id,
+      projectId: row.project_id,
       cardId: row.card_id,
       action: row.action,
       reason: row.reason,
@@ -205,35 +369,100 @@ export class DecisionStore {
   }
 
   async saveCard(card: DecisionCard): Promise<void> {
+    const hook = stringOrFallback(card.hook, card.title);
+    const payoff = stringOrFallback(card.payoff, card.predictedReward || card.description);
+    const acceptLabel = stringOrFallback(card.acceptLabel, 'これ欲しい');
+    const rejectLabel = stringOrFallback(card.rejectLabel, '今はいらない');
+    const dopamineScore = numberOrFallback(card.dopamineScore, 0.5);
+
     await this.assertInitialized().query(
       `INSERT INTO decision_cards (
-         id, project_id, type, title, description, payload,
-         predicted_reward, novelty_score, effort_score, status
+         id, project_id, type, title, hook, description, payoff,
+         accept_label, reject_label, payload, predicted_reward,
+         novelty_score, effort_score, dopamine_score, status
        )
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13, $14, $15)
        ON CONFLICT (id) DO UPDATE SET
          project_id = EXCLUDED.project_id,
          type = EXCLUDED.type,
          title = EXCLUDED.title,
+         hook = EXCLUDED.hook,
          description = EXCLUDED.description,
+         payoff = EXCLUDED.payoff,
+         accept_label = EXCLUDED.accept_label,
+         reject_label = EXCLUDED.reject_label,
          payload = EXCLUDED.payload,
          predicted_reward = EXCLUDED.predicted_reward,
          novelty_score = EXCLUDED.novelty_score,
          effort_score = EXCLUDED.effort_score,
+         dopamine_score = EXCLUDED.dopamine_score,
          status = EXCLUDED.status`,
       [
         card.id,
         card.projectId,
         card.type,
         card.title,
+        hook,
         card.description,
+        payoff,
+        acceptLabel,
+        rejectLabel,
         JSON.stringify(card.payload),
         card.predictedReward,
         card.noveltyScore,
         card.effortScore,
+        dopamineScore,
         card.status,
       ],
     );
+  }
+
+  async getCards(projectId: string): Promise<DecisionCard[]> {
+    const result = await this.assertInitialized().query<{
+      id: string;
+      project_id: string;
+      type: DecisionCard['type'];
+      title: string;
+      hook: string;
+      description: string;
+      payoff: string;
+      accept_label: string;
+      reject_label: string;
+      payload: unknown;
+      predicted_reward: string;
+      novelty_score: number;
+      effort_score: number;
+      dopamine_score: number;
+      status: DecisionCard['status'];
+    }>(
+      `SELECT *
+       FROM decision_cards
+       WHERE project_id = $1
+       ORDER BY id ASC`,
+      [projectId],
+    );
+
+    return result.rows.map((row) => {
+      const predictedReward = stringOrFallback(row.predicted_reward, '');
+      const description = stringOrFallback(row.description, '');
+      return {
+        id: row.id,
+        projectId: row.project_id,
+        type: row.type,
+        title: row.title,
+        hook: stringOrFallback(row.hook, row.title),
+        description,
+        payoff: stringOrFallback(row.payoff, predictedReward || description),
+        acceptLabel: stringOrFallback(row.accept_label, 'これ欲しい'),
+        rejectLabel: stringOrFallback(row.reject_label, '今はいらない'),
+        payload: parseJsonRecord(row.payload),
+        predictedReward,
+        noveltyScore: numberOrFallback(row.novelty_score, 0.5),
+        effortScore: numberOrFallback(row.effort_score, 0.5),
+        dopamineScore: numberOrFallback(row.dopamine_score, 0.5),
+        status: row.status,
+      };
+    });
   }
 
   async saveGeneratedApp(app: GeneratedApp): Promise<void> {

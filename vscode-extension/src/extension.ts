@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { DDDWebSocketServer } from './services/websocketServer';
-import { AIAdapter } from './services/aiAdapter';
+import { ConfiguredAIRuntimeAdapter } from './services/aiAdapter';
 import { BaselineDopamine } from './services/baselineDopamine';
 import { BuilderCortex } from './services/builderCortex';
 import { DecisionStore } from './services/decisionStore';
@@ -23,8 +23,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   await store.init(storagePath);
 
   const ws = new DDDWebSocketServer(output);
-  const ai = new AIAdapter(context);
   const baseline = new BaselineDopamine();
+  const ai = new ConfiguredAIRuntimeAdapter(context, baseline);
   server = ws;
   cortex = new BuilderCortex(ws, ai, baseline, store, output);
 
@@ -37,7 +37,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await cortex!.startProject(e.project);
     } else if (event.type === 'swipe') {
       const e = event as SwipeEvent;
-      await cortex!.handleSwipe(e.projectId, e.cardId, e.action);
+      await cortex!.handleSwipe(e.projectId, e.cardId, e.action, e.createdAt);
     }
   };
 
@@ -50,15 +50,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.commands.registerCommand('ddd.configureAI', async () => {
+      const provider = await vscode.window.showQuickPick(
+        [
+          { label: 'OpenAI-compatible API', value: 'openai-compatible' },
+          { label: 'Baseline mock', value: 'baseline' },
+        ],
+        {
+          placeHolder: 'AI Runtime Provider',
+        },
+      );
+      if (!provider) { return; }
+
+      const cfg = vscode.workspace.getConfiguration('ddd.ai');
+
+      if (provider.value === 'baseline') {
+        await cfg.update('provider', provider.value, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage('DDD: AI runtime configured');
+        return;
+      }
+
       const baseUrl = await vscode.window.showInputBox({
-        prompt: 'AI API Base URL',
-        value: 'https://api.openai.com/v1',
+        prompt: 'OpenAI-compatible API base URL',
+        value: cfg.get<string>('baseUrl') ?? 'https://api.openai.com/v1',
       });
       if (!baseUrl) { return; }
 
       const model = await vscode.window.showInputBox({
         prompt: 'Model name',
-        value: 'gpt-4o-mini',
+        value: cfg.get<string>('model') ?? 'gpt-4o-mini',
       });
       if (!model) { return; }
 
@@ -69,12 +88,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!apiKey) { return; }
 
       await context.secrets.store('ddd.apiKey', apiKey);
-
-      const cfg = vscode.workspace.getConfiguration('ddd.ai');
+      await cfg.update('provider', provider.value, vscode.ConfigurationTarget.Global);
       await cfg.update('baseUrl', baseUrl, vscode.ConfigurationTarget.Global);
       await cfg.update('model', model, vscode.ConfigurationTarget.Global);
 
-      vscode.window.showInformationMessage('DDD: AI provider configured');
+      vscode.window.showInformationMessage('DDD: AI runtime configured');
     }),
 
     vscode.commands.registerCommand('ddd.startSession', () => {
@@ -107,11 +125,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showErrorMessage('DDD: No active project.');
         return;
       }
+      const projectId = currentProjectId;
       const publisher = new GitHubPublisher();
-      const decisions = await store!.getDecisions(currentProjectId);
-      let app = await store!.getGeneratedApp(currentProjectId);
+      const decisions = await store!.getDecisions(projectId);
+      let app = await store!.getGeneratedApp(projectId);
       if (!app) {
-        app = await cortex!.generateApp(currentProjectId);
+        app = await cortex!.generateApp(projectId);
       }
       if (!app) {
         vscode.window.showErrorMessage('DDD: App generation failed.');
@@ -125,9 +144,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const result = await publisher.publish(app, decisions, repoPath);
 
       if (result.pullRequestUrl) {
-        ws.send({ type: 'pr', repositoryUrl: result.repositoryUrl, branchName: result.branchName, url: result.pullRequestUrl });
+        ws.send({
+          type: 'pr',
+          projectId,
+          repositoryUrl: result.repositoryUrl,
+          branchName: result.branchName,
+          url: result.pullRequestUrl,
+          status: 'created',
+        });
         vscode.window.showInformationMessage(`DDD: PR created → ${result.pullRequestUrl}`);
       } else {
+        ws.send({
+          type: 'pr',
+          projectId,
+          repositoryUrl: '',
+          branchName: result.branchName,
+          url: '',
+          status: 'localSaved',
+        });
         vscode.window.showWarningMessage('DDD: GitHub push failed. Local files saved.');
       }
     }),

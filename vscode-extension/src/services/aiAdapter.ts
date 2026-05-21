@@ -1,14 +1,24 @@
 import * as vscode from 'vscode';
 import OpenAI from 'openai';
 import { DecisionCard, Decision, GeneratedApp, Project } from '../models/types';
+import { AIRuntimeAdapter, AIRuntimeAdapterError, AIRuntimeProvider } from './aiRuntime';
+import { BaselineDopamine } from './baselineDopamine';
 
-export class AIAdapterError extends Error {}
-
-const cardTypes = new Set<DecisionCard['type']>(['concept', 'feature', 'ui', 'flow', 'data']);
+const cardTypes = new Set<DecisionCard['type']>([
+  'concept',
+  'feature',
+  'ui',
+  'flow',
+  'data',
+  'moment',
+  'reward',
+  'polish',
+  'risk',
+]);
 
 function requiredString(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new AIAdapterError(`AI response is missing required field: ${field}`);
+    throw new AIRuntimeAdapterError(`AI response is missing required field: ${field}`);
   }
   return value.trim();
 }
@@ -23,14 +33,14 @@ function coerceScore(value: unknown, fallback = 0.5): number {
   return Math.min(1, Math.max(0, numeric));
 }
 
-export class AIAdapter {
+export class OpenAICompatibleAdapter implements AIRuntimeAdapter {
   constructor(private readonly context: vscode.ExtensionContext) {}
 
   private async client(): Promise<OpenAI> {
     const cfg = vscode.workspace.getConfiguration('ddd.ai');
     const apiKey = await this.context.secrets.get('ddd.apiKey');
     if (typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-      throw new AIAdapterError('DDD API key is required');
+      throw new AIRuntimeAdapterError('DDD API key is required');
     }
     return new OpenAI({
       baseURL: cfg.get<string>('baseUrl'),
@@ -58,12 +68,17 @@ Rejected features: ${rejected.map((c) => c.title).join(', ') || 'none'}
 
 Suggest the next most important feature card in JSON:
 {
-  "type": "feature",
+  "type": "moment",
   "title": "...",
+  "hook": "...",
   "description": "...",
+  "payoff": "...",
+  "acceptLabel": "...",
+  "rejectLabel": "...",
   "predictedReward": "...",
   "noveltyScore": 0.0-1.0,
-  "effortScore": 0.0-1.0
+  "effortScore": 0.0-1.0,
+  "dopamineScore": 0.0-1.0
 }
 Only output JSON, no markdown.`;
 
@@ -79,7 +94,7 @@ Only output JSON, no markdown.`;
     try {
       parsed = JSON.parse(text);
     } catch {
-      throw new AIAdapterError(`Invalid JSON from AI: ${text}`);
+      throw new AIRuntimeAdapterError(`Invalid JSON from AI: ${text}`);
     }
 
     const rawType = optionalString(parsed['type'], 'feature');
@@ -89,19 +104,29 @@ Only output JSON, no markdown.`;
     const title = requiredString(parsed['title'], 'title');
     const description = requiredString(parsed['description'], 'description');
     const predictedReward = optionalString(parsed['predictedReward'], '');
+    const hook = optionalString(parsed['hook'], title) || title;
+    const payoff = optionalString(parsed['payoff'], predictedReward || description) || predictedReward || description;
+    const acceptLabel = optionalString(parsed['acceptLabel'], 'これ欲しい') || 'これ欲しい';
+    const rejectLabel = optionalString(parsed['rejectLabel'], '今はいらない') || '今はいらない';
     const noveltyScore = coerceScore(parsed['noveltyScore']);
     const effortScore = coerceScore(parsed['effortScore']);
+    const dopamineScore = coerceScore(parsed['dopamineScore']);
 
     return {
       id: `ai-${Date.now()}`,
       projectId: project.id,
       type,
       title,
+      hook,
       description,
+      payoff,
+      acceptLabel,
+      rejectLabel,
       payload: {},
       predictedReward,
       noveltyScore,
       effortScore,
+      dopamineScore,
       status: 'pending',
     };
   }
@@ -134,7 +159,7 @@ Only output JSON.`;
     try {
       spec = JSON.parse(text);
     } catch {
-      throw new AIAdapterError(`Invalid JSON from AI: ${text}`);
+      throw new AIRuntimeAdapterError(`Invalid JSON from AI: ${text}`);
     }
 
     return {
@@ -148,5 +173,38 @@ Only output JSON.`;
       pullRequestUrl: '',
       updatedAt: new Date().toISOString(),
     };
+  }
+}
+
+export class ConfiguredAIRuntimeAdapter implements AIRuntimeAdapter {
+  private readonly openAI: OpenAICompatibleAdapter;
+
+  constructor(
+    context: vscode.ExtensionContext,
+    private readonly baseline: BaselineDopamine,
+  ) {
+    this.openAI = new OpenAICompatibleAdapter(context);
+  }
+
+  async generateNextCard(
+    project: Project,
+    decisions: Decision[],
+    accepted: DecisionCard[],
+    rejected: DecisionCard[],
+  ): Promise<DecisionCard | null> {
+    return this.adapter().generateNextCard(project, decisions, accepted, rejected);
+  }
+
+  async generateApp(project: Project, acceptedCards: DecisionCard[]): Promise<GeneratedApp> {
+    return this.adapter().generateApp(project, acceptedCards);
+  }
+
+  private adapter(): AIRuntimeAdapter {
+    const cfg = vscode.workspace.getConfiguration('ddd.ai');
+    const provider = cfg.get<AIRuntimeProvider>('provider') ?? 'openai-compatible';
+    if (provider === 'baseline') {
+      return this.baseline;
+    }
+    return this.openAI;
   }
 }

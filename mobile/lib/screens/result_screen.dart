@@ -5,7 +5,13 @@ import 'package:flutter/services.dart';
 import '../models/decision.dart';
 import '../models/decision_card.dart';
 import '../models/project.dart';
-import '../services/websocket_service.dart';
+import '../services/websocket_service.dart'
+    show
+        WebSocketService,
+        WsIncomingEvent,
+        WsPreviewEvent,
+        WsPrEvent,
+        WsErrorEvent;
 import 'home_screen.dart';
 
 class ResultScreen extends StatefulWidget {
@@ -25,15 +31,17 @@ class ResultScreen extends StatefulWidget {
 }
 
 class _ResultScreenState extends State<ResultScreen> {
-  String _prUrl = '';
-  StreamSubscription<Map<String, dynamic>>? _wsSub;
+  ResultEventSummary _result = const ResultEventSummary();
+  StreamSubscription<WsIncomingEvent>? _wsSub;
 
   @override
   void initState() {
     super.initState();
-    _wsSub = WebSocketService().messages.listen((msg) {
-      if (msg['type'] == 'pr' && mounted) {
-        setState(() => _prUrl = msg['url'] as String? ?? '');
+    _wsSub = WebSocketService().events.listen((event) {
+      if (!mounted || !_belongsToProject(event)) return;
+      final next = _result.apply(event);
+      if (next != _result) {
+        setState(() => _result = next);
       }
     });
   }
@@ -41,6 +49,7 @@ class _ResultScreenState extends State<ResultScreen> {
   @override
   void dispose() {
     _wsSub?.cancel();
+    WebSocketService().disconnect();
     super.dispose();
   }
 
@@ -49,18 +58,32 @@ class _ResultScreenState extends State<ResultScreen> {
   List<Decision> get _rejected =>
       widget.decisions.where((d) => d.action == 'rejected').toList();
 
+  bool _belongsToProject(WsIncomingEvent event) {
+    return switch (event) {
+      WsPreviewEvent e => e.projectId == widget.project.id,
+      WsPrEvent e => e.projectId == widget.project.id,
+      WsErrorEvent e => e.projectId == null || e.projectId == widget.project.id,
+      _ => false,
+    };
+  }
+
   DecisionCard _cardFor(Decision d) => widget.cards.firstWhere(
     (c) => c.id == d.cardId,
     orElse: () => DecisionCard(
       id: d.cardId,
       projectId: '',
-      type: '',
+      type: 'feature',
       title: d.cardId,
+      hook: d.cardId,
       description: '',
+      payoff: '',
+      acceptLabel: 'これ欲しい',
+      rejectLabel: '今はいらない',
       payload: {},
       predictedReward: '',
       noveltyScore: 0,
       effortScore: 0,
+      dopamineScore: 0,
     ),
   );
 
@@ -86,42 +109,51 @@ class _ResultScreenState extends State<ResultScreen> {
                 style: TextStyle(fontSize: 14, color: Color(0xFF64748b)),
               ),
               const SizedBox(height: 32),
-              if (_prUrl.isNotEmpty) ...[
+              if (_result.isWaiting) ...[
+                const _SectionCard(
+                  icon: '⏳',
+                  title: '生成結果',
+                  child: _WaitingResult(),
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (_result.previewUrl.isNotEmpty) ...[
+                _SectionCard(
+                  icon: '👀',
+                  title: 'Preview',
+                  child: _CopyableValue(value: _result.previewUrl),
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (_result.prStatus == 'created' &&
+                  _result.prUrl.isNotEmpty) ...[
                 _SectionCard(
                   icon: '🐙',
                   title: 'Pull Request',
-                  child: GestureDetector(
-                    onTap: () {
-                      Clipboard.setData(ClipboardData(text: _prUrl));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('URLをコピーしました')),
-                      );
-                    },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF7c3aed).withAlpha(25),
-                        border: Border.all(
-                          color: const Color(0xFF7c3aed).withAlpha(80),
-                        ),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      padding: const EdgeInsets.all(12),
-                      child: Row(
-                        children: [
-                          const Text('🔗 '),
-                          Expanded(
-                            child: Text(
-                              _prUrl,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: Color(0xFFa855f7),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                  child: _CopyableValue(value: _result.prUrl),
+                ),
+                const SizedBox(height: 12),
+              ] else if (_result.prStatus == 'localSaved') ...[
+                _SectionCard(
+                  icon: '💾',
+                  title: 'ローカル保存',
+                  child: _LocalSavedResult(branchName: _result.branchName),
+                ),
+                const SizedBox(height: 12),
+              ] else if (_result.previewUrl.isNotEmpty &&
+                  !_result.hasError) ...[
+                const _SectionCard(
+                  icon: '⏳',
+                  title: '公開結果',
+                  child: _WaitingResult(message: 'Pull Requestの結果を待っています。'),
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (_result.hasError) ...[
+                _SectionCard(
+                  icon: '⚠️',
+                  title: 'Error',
+                  child: _ErrorResult(message: _result.errorMessage),
                 ),
                 const SizedBox(height: 12),
               ],
@@ -229,6 +261,164 @@ class _ResultScreenState extends State<ResultScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+@immutable
+class ResultEventSummary {
+  final String previewUrl;
+  final String prUrl;
+  final String prStatus;
+  final String branchName;
+  final String errorMessage;
+
+  const ResultEventSummary({
+    this.previewUrl = '',
+    this.prUrl = '',
+    this.prStatus = '',
+    this.branchName = '',
+    this.errorMessage = '',
+  });
+
+  bool get isWaiting =>
+      previewUrl.isEmpty && prStatus.isEmpty && errorMessage.isEmpty;
+  bool get hasError => errorMessage.isNotEmpty;
+
+  ResultEventSummary apply(WsIncomingEvent event) {
+    return switch (event) {
+      WsPreviewEvent e => _copyWith(previewUrl: e.url, errorMessage: ''),
+      WsPrEvent e => _copyWith(
+        prUrl: e.url,
+        prStatus: e.status,
+        branchName: e.branchName,
+        errorMessage: '',
+      ),
+      WsErrorEvent e => _copyWith(
+        errorMessage: e.message.isNotEmpty ? e.message : '不明なエラー',
+      ),
+      _ => this,
+    };
+  }
+
+  ResultEventSummary _copyWith({
+    String? previewUrl,
+    String? prUrl,
+    String? prStatus,
+    String? branchName,
+    String? errorMessage,
+  }) {
+    return ResultEventSummary(
+      previewUrl: previewUrl ?? this.previewUrl,
+      prUrl: prUrl ?? this.prUrl,
+      prStatus: prStatus ?? this.prStatus,
+      branchName: branchName ?? this.branchName,
+      errorMessage: errorMessage ?? this.errorMessage,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is ResultEventSummary &&
+        other.previewUrl == previewUrl &&
+        other.prUrl == prUrl &&
+        other.prStatus == prStatus &&
+        other.branchName == branchName &&
+        other.errorMessage == errorMessage;
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(previewUrl, prUrl, prStatus, branchName, errorMessage);
+}
+
+class _WaitingResult extends StatelessWidget {
+  final String message;
+  const _WaitingResult({this.message = '生成結果を待っています。'});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            message,
+            style: const TextStyle(fontSize: 13, color: Color(0xFF94a3b8)),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CopyableValue extends StatelessWidget {
+  final String value;
+  const _CopyableValue({required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Clipboard.setData(ClipboardData(text: value));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('URLをコピーしました')));
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF7c3aed).withAlpha(25),
+          border: Border.all(color: const Color(0xFF7c3aed).withAlpha(80)),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            const Text('🔗 '),
+            Expanded(
+              child: Text(
+                value,
+                style: const TextStyle(fontSize: 13, color: Color(0xFFa855f7)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LocalSavedResult extends StatelessWidget {
+  final String branchName;
+  const _LocalSavedResult({required this.branchName});
+
+  @override
+  Widget build(BuildContext context) {
+    final message = branchName.isEmpty
+        ? 'GitHub連携に失敗しましたが、生成結果はローカルに保存されました。'
+        : 'GitHub連携に失敗しましたが、生成結果は $branchName に保存されました。';
+
+    return Text(
+      message,
+      style: const TextStyle(fontSize: 13, color: Color(0xFF94a3b8)),
+    );
+  }
+}
+
+class _ErrorResult extends StatelessWidget {
+  final String message;
+  const _ErrorResult({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      message,
+      style: const TextStyle(fontSize: 13, color: Color(0xFFf87171)),
     );
   }
 }
