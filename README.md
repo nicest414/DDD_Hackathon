@@ -16,7 +16,6 @@ code .
 4. 新しくできたWindowにてCtrl+Shift+P → "Dev Containers: Rebuild and Reopen in Containeor" もしくは "Dev Containers: Reopen in Container" を実行、少し待つ
 5. 下記コマンドを実行
 ```bash
-npm install
 npm run compile   # TypeScript → JS ビルド
 ```
 F5 → Extension Development Host 起動
