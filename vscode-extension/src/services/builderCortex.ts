@@ -140,6 +140,15 @@ export class BuilderCortex {
     this.cards.set(project.id, cards);
   }
 
+  async startProject(project: Project): Promise<void> {
+    this.output.appendLine(`[DDD] Generating first card for: ${project.title}`);
+    const firstCard = await this._nextCard(project.id);
+    if (firstCard) {
+      this.ws.send({ type: 'card', card: firstCard });
+      this.output.appendLine(`[DDD] First card sent: ${firstCard.title}`);
+    }
+  }
+
   private async _nextCard(projectId: string): Promise<DecisionCard | null> {
     const project = this.projects.get(projectId);
     const decisions = this.decisions.get(projectId) ?? [];

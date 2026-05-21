@@ -34,6 +34,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await cortex!.registerProject(e.project);
       currentProjectId = e.project.id;
       output.appendLine(`[DDD] Session started: ${e.project.title}`);
+      await cortex!.startProject(e.project);
     } else if (event.type === 'swipe') {
       const e = event as SwipeEvent;
       await cortex!.handleSwipe(e.projectId, e.cardId, e.action, e.createdAt);

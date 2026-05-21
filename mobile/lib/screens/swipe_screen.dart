@@ -40,6 +40,21 @@ class _SwipeScreenState extends State<SwipeScreen> {
       }
     });
     _tryConnect();
+    // DEBUG: 受信イベントをログ＆SnackBarで表示
+    _ws.events.listen((event) {
+      debugPrint('[DDD] received: $event');
+      if (!mounted) return;
+      final msg = switch (event) {
+        WsCardEvent e => 'card受信: ${e.card.title}',
+        WsPreviewEvent _ => 'イベント受信: preview',
+        WsPrEvent _ => 'イベント受信: pr',
+        WsErrorEvent e => 'エラー受信: ${e.code}',
+      };
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), duration: const Duration(seconds: 3)),
+      );
+    });
+    // END DEBUG
   }
 
   @override
@@ -61,6 +76,27 @@ class _SwipeScreenState extends State<SwipeScreen> {
     await _ws.connect(AppConfig.serverUrl);
     if (_ws.status == WsStatus.connected) {
       _ws.sendStartSession(widget.project);
+      // DEBUG: 接続成功通知
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('VS Code拡張に接続しました'),
+            backgroundColor: Color(0xFF22c55e),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      // END DEBUG
+    } else if (mounted) {
+      // DEBUG: 接続失敗通知
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('VS Code拡張に接続できませんでした (${AppConfig.serverUrl})'),
+          backgroundColor: const Color(0xFFef4444),
+          duration: const Duration(seconds: 5),
+        ),
+      );
+      // END DEBUG
     }
   }
 
