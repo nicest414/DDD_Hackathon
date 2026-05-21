@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { DDDWebSocketServer } from './services/websocketServer';
-import { ConfiguredAIRuntimeAdapter } from './services/aiAdapter';
+import { AIRuntimeDispatcher } from './services/aiDispatcher';
 import { BaselineDopamine } from './services/baselineDopamine';
 import { BuilderCortex } from './services/builderCortex';
 import { DecisionStore } from './services/decisionStore';
@@ -24,7 +24,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const ws = new DDDWebSocketServer(output);
   const baseline = new BaselineDopamine();
-  const ai = new ConfiguredAIRuntimeAdapter(context, baseline);
+  const ai = new AIRuntimeDispatcher(context, baseline);
   server = ws;
   cortex = new BuilderCortex(ws, ai, baseline, store, output);
 

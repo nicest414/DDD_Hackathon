@@ -5,7 +5,7 @@ import { BaselineDopamine } from './baselineDopamine';
 import { OpenAICompatibleAdapter } from './openaiAdapter';
 import { CodexCLIAdapter } from './codexAdapter';
 
-export class ConfiguredAIRuntimeAdapter implements AIRuntimeAdapter {
+export class AIRuntimeDispatcher implements AIRuntimeAdapter {
   private readonly openAI: OpenAICompatibleAdapter;
   private readonly codex: CodexCLIAdapter;
 
@@ -23,14 +23,14 @@ export class ConfiguredAIRuntimeAdapter implements AIRuntimeAdapter {
     accepted: DecisionCard[],
     rejected: DecisionCard[],
   ): Promise<DecisionCard | null> {
-    return this.adapter().generateNextCard(project, decisions, accepted, rejected);
+    return this.dispatch().generateNextCard(project, decisions, accepted, rejected);
   }
 
   async generateApp(project: Project, acceptedCards: DecisionCard[]): Promise<GeneratedApp> {
-    return this.adapter().generateApp(project, acceptedCards);
+    return this.dispatch().generateApp(project, acceptedCards);
   }
 
-  private adapter(): AIRuntimeAdapter {
+  private dispatch(): AIRuntimeAdapter {
     const cfg = vscode.workspace.getConfiguration('ddd.ai');
     const provider = cfg.get<AIRuntimeProvider>('provider') ?? 'openai-compatible';
     if (provider === 'baseline') { return this.baseline; }
