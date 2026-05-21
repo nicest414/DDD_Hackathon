@@ -15,6 +15,26 @@ export interface AIRuntimeAdapter {
 
 export class AIRuntimeAdapterError extends Error {}
 
+export function extractFirstJsonObject(text: string, source: string): string {
+  const start = text.indexOf('{');
+  if (start === -1) {
+    throw new AIRuntimeAdapterError(`No JSON found in ${source} output: ${text.slice(0, 200)}`);
+  }
+  let depth = 0;
+  let end = -1;
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === '{') { depth++; }
+    else if (text[i] === '}') {
+      depth--;
+      if (depth === 0) { end = i; break; }
+    }
+  }
+  if (end === -1) {
+    throw new AIRuntimeAdapterError(`Incomplete JSON object in ${source} output: ${text.slice(0, 200)}`);
+  }
+  return text.slice(start, end + 1);
+}
+
 const CARD_TYPES = new Set<DecisionCard['type']>([
   'concept', 'feature', 'ui', 'flow', 'data', 'moment', 'reward', 'polish', 'risk',
 ]);
