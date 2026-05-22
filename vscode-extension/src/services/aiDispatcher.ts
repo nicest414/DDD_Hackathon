@@ -14,6 +14,7 @@ export class AIRuntimeDispatcher implements AIRuntimeAdapter {
   constructor(
     context: vscode.ExtensionContext,
     private readonly baseline: BaselineDopamine,
+    private readonly output: vscode.OutputChannel,
   ) {
     this.openAI = new OpenAICompatibleAdapter(context);
     this.codex = new CodexCLIAdapter();
@@ -36,9 +37,21 @@ export class AIRuntimeDispatcher implements AIRuntimeAdapter {
   private dispatch(): AIRuntimeAdapter {
     const cfg = vscode.workspace.getConfiguration('ddd.ai');
     const provider = cfg.get<AIRuntimeProvider>('provider') ?? 'openai-compatible';
-    if (provider === 'baseline') { return this.baseline; }
-    if (provider === 'codex-cli') { return this.codex; }
-    if (provider === 'claude-code') { return this.claude; }
+    if (provider === 'baseline') {
+      this.output.appendLine('[DDD] AI: baseline (mock)');
+      return this.baseline;
+    }
+    if (provider === 'codex-cli') {
+      this.output.appendLine('[DDD] AI: codex exec');
+      return this.codex;
+    }
+    if (provider === 'claude-code') {
+      this.output.appendLine('[DDD] AI: claude -p');
+      return this.claude;
+    }
+    const model = cfg.get<string>('model') ?? '(not set)';
+    const baseUrl = cfg.get<string>('baseUrl') ?? 'https://api.openai.com/v1';
+    this.output.appendLine(`[DDD] AI: openai-compatible  model=${model}  url=${baseUrl}`);
     return this.openAI;
   }
 }
