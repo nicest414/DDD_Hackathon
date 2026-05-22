@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { DDDWebSocketServer } from './services/websocketServer';
-import { ConfiguredAIRuntimeAdapter } from './services/aiAdapter';
+import { AIRuntimeDispatcher } from './services/aiDispatcher';
 import { BaselineDopamine } from './services/baselineDopamine';
 import { BuilderCortex } from './services/builderCortex';
 import { DecisionStore } from './services/decisionStore';
@@ -24,7 +24,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const ws = new DDDWebSocketServer(output);
   const baseline = new BaselineDopamine();
-  const ai = new ConfiguredAIRuntimeAdapter(context, baseline);
+  const ai = new AIRuntimeDispatcher(context, baseline);
   server = ws;
   cortex = new BuilderCortex(ws, ai, baseline, store, output);
 
@@ -53,6 +53,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const provider = await vscode.window.showQuickPick(
         [
           { label: 'OpenAI-compatible API', value: 'openai-compatible' },
+          { label: 'Claude Code (claude -p)', value: 'claude-code' },
+          { label: 'Codex CLI (codex exec)', value: 'codex-cli' },
           { label: 'Baseline mock', value: 'baseline' },
         ],
         {
@@ -63,36 +65,50 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       const cfg = vscode.workspace.getConfiguration('ddd.ai');
 
-      if (provider.value === 'baseline') {
+      if (provider.value === 'claude-code') {
         await cfg.update('provider', provider.value, vscode.ConfigurationTarget.Global);
-        vscode.window.showInformationMessage('DDD: AI runtime configured');
+        vscode.window.showInformationMessage('DDD: AI runtime configured (Claude Code)');
         return;
       }
 
-      const baseUrl = await vscode.window.showInputBox({
-        prompt: 'OpenAI-compatible API base URL',
-        value: cfg.get<string>('baseUrl') ?? 'https://api.openai.com/v1',
-      });
-      if (!baseUrl) { return; }
+      if (provider.value === 'codex-cli') {
+        await cfg.update('provider', provider.value, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage('DDD: AI runtime configured (Codex CLI)');
+        return;
+      }
 
-      const model = await vscode.window.showInputBox({
-        prompt: 'Model name',
-        value: cfg.get<string>('model') ?? 'gpt-4o-mini',
-      });
-      if (!model) { return; }
+      if (provider.value === 'openai-compatible') {
+        const baseUrl = await vscode.window.showInputBox({
+          prompt: 'OpenAI-compatible API base URL',
+          value: (await context.secrets.get('ddd.baseUrl')) ?? cfg.get<string>('baseUrl') ?? 'https://api.openai.com/v1',
+        });
 
-      const apiKey = await vscode.window.showInputBox({
-        prompt: 'API Key',
-        password: true,
-      });
-      if (!apiKey) { return; }
+        if (!baseUrl) { return; }
 
-      await context.secrets.store('ddd.apiKey', apiKey);
+        const model = await vscode.window.showInputBox({
+          prompt: 'Model name',
+          value: (await context.secrets.get('ddd.model')) ?? cfg.get<string>('model') ?? 'gpt-4o-mini',
+        });
+        if (!model) { return; }
+
+        const apiKey = await vscode.window.showInputBox({
+          prompt: 'API Key',
+          password: true,
+        });
+        if (!apiKey) { return; }
+
+        await context.secrets.store('ddd.apiKey', apiKey);
+        await context.secrets.store('ddd.baseUrl', baseUrl);
+        await context.secrets.store('ddd.model', model);
+        await cfg.update('provider', provider.value, vscode.ConfigurationTarget.Global);
+
+        vscode.window.showInformationMessage('DDD: AI runtime configured (OpenAI-compatible)');
+        return;
+      }
+
+      // baseline: no extra config
       await cfg.update('provider', provider.value, vscode.ConfigurationTarget.Global);
-      await cfg.update('baseUrl', baseUrl, vscode.ConfigurationTarget.Global);
-      await cfg.update('model', model, vscode.ConfigurationTarget.Global);
-
-      vscode.window.showInformationMessage('DDD: AI runtime configured');
+      vscode.window.showInformationMessage('DDD: No AI runtime configured, using baseline mock implementation');
     }),
 
     vscode.commands.registerCommand('ddd.startSession', () => {
