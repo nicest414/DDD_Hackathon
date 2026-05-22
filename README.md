@@ -44,6 +44,11 @@ flutter run
 
 起動したら「AIに提案してもらう」からセッション開始。Extension が起動していれば自動で WebSocket 接続。
 
+## デモ時
+拡張機能を実行するとddd-test-workspace/privateが開く
+普通はそのまま
+アプリをチーム内で共有したかったらddd-test-workspace/publicに入れてください
+
 ---
 
 ## Documents
