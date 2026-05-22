@@ -24,7 +24,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const ws = new DDDWebSocketServer(output);
   const baseline = new BaselineDopamine();
-  const ai = new AIRuntimeDispatcher(context, baseline);
+  const ai = new AIRuntimeDispatcher(context, baseline, output);
   server = ws;
   cortex = new BuilderCortex(ws, ai, baseline, store, output);
 

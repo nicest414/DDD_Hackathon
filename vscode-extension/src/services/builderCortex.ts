@@ -108,7 +108,7 @@ export class BuilderCortex {
       app = { ...app, spec: this._normalizeSpec(app.spec, project) };
     } catch (err) {
       if (err instanceof AIRuntimeAdapterError) {
-        this.output.appendLine('[DDD] AI failed, using baseline');
+        this.output.appendLine(`[DDD] AI generateApp failed: ${this._errorMessage(err)}`);
         app = await this.fallbackAI.generateApp(project, accepted);
         app = { ...app, spec: this._normalizeSpec(app.spec, project) };
       } else {
@@ -175,6 +175,7 @@ export class BuilderCortex {
       await this.store.saveCard(card);
       return card;
     } catch (err) {
+      this.output.appendLine(`[DDD] AI card generation failed: ${this._errorMessage(err)}`);
       if (fallback) {
         const card = await this.fallbackAI.generateNextCard(project, decisions, accepted, rejected);
         if (card) {
