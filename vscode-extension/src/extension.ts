@@ -83,13 +83,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           value: (await context.secrets.get('ddd.baseUrl')) ?? cfg.get<string>('baseUrl') ?? 'https://api.openai.com/v1',
         });
 
-        if (!baseUrl) { return; }
+        if (!baseUrl?.trim()) { return; }
 
         const model = await vscode.window.showInputBox({
           prompt: 'Model name',
           value: (await context.secrets.get('ddd.model')) ?? cfg.get<string>('model') ?? 'gpt-4o-mini',
         });
-        if (!model) { return; }
+        if (!model?.trim()) { return; }
 
         const apiKey = await vscode.window.showInputBox({
           prompt: 'API Key',
@@ -98,8 +98,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (!apiKey) { return; }
 
         await context.secrets.store('ddd.apiKey', apiKey);
-        await context.secrets.store('ddd.baseUrl', baseUrl);
-        await context.secrets.store('ddd.model', model);
+        await context.secrets.store('ddd.baseUrl', baseUrl.trim());
+        await context.secrets.store('ddd.model', model.trim());
         await cfg.update('provider', provider.value, vscode.ConfigurationTarget.Global);
 
         vscode.window.showInformationMessage('DDD: AI runtime configured (OpenAI-compatible)');
