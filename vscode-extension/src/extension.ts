@@ -80,14 +80,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (provider.value === 'openai-compatible') {
         const baseUrl = await vscode.window.showInputBox({
           prompt: 'OpenAI-compatible API base URL',
-          value: cfg.get<string>('baseUrl') ?? 'https://api.openai.com/v1',
+          value: (await context.secrets.get('ddd.baseUrl')) ?? cfg.get<string>('baseUrl') ?? 'https://api.openai.com/v1',
         });
-        
+
         if (!baseUrl) { return; }
 
         const model = await vscode.window.showInputBox({
           prompt: 'Model name',
-          value: cfg.get<string>('model') ?? 'gpt-4o-mini',
+          value: (await context.secrets.get('ddd.model')) ?? cfg.get<string>('model') ?? 'gpt-4o-mini',
         });
         if (!model) { return; }
 
@@ -98,9 +98,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (!apiKey) { return; }
 
         await context.secrets.store('ddd.apiKey', apiKey);
+        await context.secrets.store('ddd.baseUrl', baseUrl);
+        await context.secrets.store('ddd.model', model);
         await cfg.update('provider', provider.value, vscode.ConfigurationTarget.Global);
-        await cfg.update('baseUrl', baseUrl, vscode.ConfigurationTarget.Global);
-        await cfg.update('model', model, vscode.ConfigurationTarget.Global);
 
         vscode.window.showInformationMessage('DDD: AI runtime configured (OpenAI-compatible)');
         return;

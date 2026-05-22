@@ -13,8 +13,9 @@ export class OpenAICompatibleAdapter extends BaseAIAdapter {
     if (typeof apiKey !== 'string' || apiKey.trim().length === 0) {
       throw new AIRuntimeAdapterError('DDD API key is required');
     }
+    const baseURL = (await this.context.secrets.get('ddd.baseUrl')) ?? cfg.get<string>('baseUrl');
     return new OpenAI({
-      baseURL: cfg.get<string>('baseUrl'),
+      baseURL,
       apiKey: apiKey.trim(),
       timeout: cfg.get<number>('timeoutMs') ?? 30000,
     });
@@ -22,7 +23,7 @@ export class OpenAICompatibleAdapter extends BaseAIAdapter {
 
   protected async callAI(prompt: string): Promise<string> {
     const cfg = vscode.workspace.getConfiguration('ddd.ai');
-    const model = cfg.get<string>('model') ?? 'gpt-4o-mini';
+    const model = (await this.context.secrets.get('ddd.model')) ?? cfg.get<string>('model') ?? 'gpt-4o-mini';
     const maxTokens = cfg.get<number>('maxTokens') ?? 2000;
 
     const client = await this.client();
