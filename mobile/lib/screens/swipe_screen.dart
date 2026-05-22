@@ -6,97 +6,81 @@ import '../models/decision_card.dart';
 import '../models/decision.dart';
 import '../models/project.dart';
 import '../config/app_config.dart';
-import '../services/baseline_dopamine.dart';
 import '../services/websocket_service.dart';
 import '../widgets/proposal_card.dart';
-import 'result_screen.dart';
 
 class SwipeScreen extends StatefulWidget {
   final Project project;
-  const SwipeScreen({super.key, required this.project});
+  final bool connectOnInit;
+
+  const SwipeScreen({
+    super.key,
+    required this.project,
+    this.connectOnInit = true,
+  });
 
   @override
   State<SwipeScreen> createState() => _SwipeScreenState();
 }
 
 class _SwipeScreenState extends State<SwipeScreen> {
-  final _baseline = BaselineDopamine();
   final _ws = WebSocketService();
   final _decisions = <Decision>[];
   final _cards = <DecisionCard>[];
   int _currentIndex = 0;
   bool _animating = false;
-  bool _navigatingToResult = false;
+  bool _waitingForCard = true;
+  String? _connectionMessage;
+  String? _sessionErrorMessage;
   StreamSubscription<WsIncomingEvent>? _wsSub;
 
   @override
   void initState() {
     super.initState();
-    _preloadCards();
     _wsSub = _ws.events.listen((event) {
       if (!mounted) return;
       if (event is WsCardEvent && event.card.projectId == widget.project.id) {
-        setState(() => _cards.add(event.card));
+        setState(() {
+          _cards.add(event.card);
+          _waitingForCard = false;
+          _sessionErrorMessage = null;
+        });
+      } else if (event is WsErrorEvent &&
+          (event.projectId == null || event.projectId == widget.project.id)) {
+        setState(() {
+          _waitingForCard = false;
+          _sessionErrorMessage = event.message.trim().isNotEmpty
+              ? event.message
+              : 'Session error: ${event.code}';
+        });
       }
     });
-    _tryConnect();
-    // DEBUG: 受信イベントをログ＆SnackBarで表示
-    _ws.events.listen((event) {
-      debugPrint('[DDD] received: $event');
-      if (!mounted) return;
-      final msg = switch (event) {
-        WsCardEvent e => 'card受信: ${e.card.title}',
-        WsPreviewEvent _ => 'イベント受信: preview',
-        WsPrEvent _ => 'イベント受信: pr',
-        WsErrorEvent e => 'エラー受信: ${e.code}',
-      };
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg), duration: const Duration(seconds: 3)),
-      );
-    });
-    // END DEBUG
+    if (widget.connectOnInit) {
+      _tryConnect();
+    }
   }
 
   @override
   void dispose() {
     _wsSub?.cancel();
-    if (!_navigatingToResult) {
-      _ws.disconnect();
-    }
+    _ws.disconnect();
     super.dispose();
   }
 
-  void _preloadCards() {
-    for (int i = 0; i < 3 && _baseline.hasMore(_decisions); i++) {
-      _cards.add(_baseline.getNextCard(_decisions));
-    }
-  }
-
   Future<void> _tryConnect() async {
+    setState(() {
+      _waitingForCard = true;
+      _connectionMessage = null;
+    });
     await _ws.connect(AppConfig.serverUrl);
     if (_ws.status == WsStatus.connected) {
       _ws.sendStartSession(widget.project);
-      // DEBUG: 接続成功通知
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('VS Code拡張に接続しました'),
-            backgroundColor: Color(0xFF22c55e),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-      // END DEBUG
     } else if (mounted) {
-      // DEBUG: 接続失敗通知
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('VS Code拡張に接続できませんでした (${AppConfig.serverUrl})'),
-          backgroundColor: const Color(0xFFef4444),
-          duration: const Duration(seconds: 5),
-        ),
-      );
-      // END DEBUG
+      setState(() {
+        _waitingForCard = false;
+        _connectionMessage =
+            'Could not connect to the VS Code extension at ${AppConfig.serverUrl}.';
+      });
     }
   }
 
@@ -122,23 +106,8 @@ class _SwipeScreenState extends State<SwipeScreen> {
       setState(() {
         _currentIndex++;
         _animating = false;
-        if (_baseline.hasMore(_decisions)) {
-          _cards.add(_baseline.getNextCard(_decisions));
-        }
+        _waitingForCard = _currentCard == null;
       });
-
-      if (_currentIndex >= _cards.length) {
-        _navigatingToResult = true;
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (_) => ResultScreen(
-              project: widget.project,
-              decisions: _decisions,
-              cards: _cards,
-            ),
-          ),
-        );
-      }
     });
   }
 
@@ -175,6 +144,15 @@ class _SwipeScreenState extends State<SwipeScreen> {
                       onAdopt: () => _decide('accepted'),
                       onReject: () => _decide('rejected'),
                     ),
+                    if (currentCard == null)
+                      Expanded(
+                        child: _CardWaitState(
+                          waitingForCard: _waitingForCard,
+                          connectionMessage: _connectionMessage,
+                          sessionErrorMessage: _sessionErrorMessage,
+                          onRetry: widget.connectOnInit ? _tryConnect : null,
+                        ),
+                      ),
                     const SizedBox(height: 20),
                     _SwipeHints(card: currentCard),
                   ],
@@ -188,6 +166,70 @@ class _SwipeScreenState extends State<SwipeScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _CardWaitState extends StatelessWidget {
+  final bool waitingForCard;
+  final String? connectionMessage;
+  final String? sessionErrorMessage;
+  final VoidCallback? onRetry;
+
+  const _CardWaitState({
+    required this.waitingForCard,
+    required this.connectionMessage,
+    required this.sessionErrorMessage,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final errorMessage = sessionErrorMessage ?? connectionMessage;
+    final child = errorMessage == null
+        ? Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (waitingForCard)
+                const CircularProgressIndicator(strokeWidth: 3),
+              const SizedBox(height: 16),
+              const Text(
+                'Waiting for the next card from the VS Code extension.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Color(0xFFcbd5e1)),
+              ),
+            ],
+          )
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.wifi_off_rounded,
+                color: Color(0xFFef4444),
+                size: 28,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                errorMessage,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Color(0xFFfca5a5)),
+              ),
+              if (onRetry != null) ...[
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Retry'),
+                ),
+              ],
+            ],
+          );
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 300),
+        child: child,
       ),
     );
   }
