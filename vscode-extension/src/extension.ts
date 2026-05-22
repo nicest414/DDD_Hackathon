@@ -124,8 +124,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showErrorMessage('DDD: No active project. Start a session first.');
         return;
       }
-      await cortex!.generateApp(currentProjectId);
-      vscode.window.showInformationMessage('DDD: App generated');
+      const app = await cortex!.generateApp(currentProjectId);
+      if (!app) {
+        vscode.window.showErrorMessage('DDD: App generation failed.');
+        return;
+      }
+      const repoPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (repoPath) {
+        const decisions = await store!.getDecisions(currentProjectId);
+        await fs.promises.writeFile(path.join(repoPath, 'ddd-spec.json'), JSON.stringify(app.spec, null, 2));
+        await fs.promises.writeFile(path.join(repoPath, 'ddd-decisions.json'), JSON.stringify(decisions, null, 2));
+        vscode.window.showInformationMessage('DDD: ddd-spec.json / ddd-decisions.json を生成しました');
+      } else {
+        vscode.window.showInformationMessage('DDD: App generated');
+      }
     }),
 
     vscode.commands.registerCommand('ddd.openPreview', () => {
