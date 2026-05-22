@@ -339,6 +339,7 @@ class _CardStack extends StatelessWidget {
                   : i == 1
                   ? 6.0
                   : 12.0,
+              bottom: 0,
               left: 0,
               right: 0,
               child: Transform.scale(
