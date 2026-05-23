@@ -89,7 +89,7 @@ export type ErrorCode =
   | 'PREVIEW_FAILED'
   | 'UNKNOWN_ERROR';
 
-export type PRStatus = 'created' | 'localSaved';
+export type PRStatus = 'created' | 'localSaved' | 'error';
 
 export interface SwipeEvent {
   type: 'swipe';
@@ -128,6 +128,7 @@ export interface PREvent {
   branchName: string;
   url: string;
   status: PRStatus;
+  message?: string;
 }
 
 export interface ErrorEvent {

@@ -80,7 +80,25 @@ class _SwipeScreenState extends State<SwipeScreen> {
     super.dispose();
   }
 
-  void _finish() {
+  Future<void> _finish() async {
+    if (_navigatingToFinish) return;
+
+    // Reconnect if the socket dropped before the user tapped Finish.
+    if (_ws.status != WsStatus.connected) {
+      await _ws.connect(AppConfig.serverUrl);
+    }
+
+    if (_ws.status != WsStatus.connected) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cannot finish: not connected to VS Code extension.'),
+          ),
+        );
+      }
+      return;
+    }
+
     // 送信待ちの決定を即時送信してからセッションを終了する
     for (final cardId in _pending.keys.toList()) {
       _pending[cardId]!.cancel();
@@ -94,7 +112,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
 
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const FinishScreen()),
+      MaterialPageRoute(builder: (_) => FinishScreen(projectId: widget.project.id)),
     );
   }
 
@@ -237,7 +255,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
               right: 20,
               bottom: 20,
               child: FilledButton(
-                onPressed: _finish,
+                onPressed: () { _finish(); },
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFF7c3aed),
                   padding: const EdgeInsets.symmetric(vertical: 14),

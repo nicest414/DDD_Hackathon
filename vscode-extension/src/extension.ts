@@ -75,26 +75,47 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
 
       const repoPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-      if (repoPath) {
-        try {
-          const decisions = await store!.getDecisions(projectId);
-          const projectDir = path.join(repoPath, projectId);
-          await fs.promises.mkdir(projectDir, { recursive: true });
-          await fs.promises.writeFile(path.join(projectDir, 'ddd-spec.json'), JSON.stringify(app.spec, null, 2));
-          await fs.promises.writeFile(path.join(projectDir, 'ddd-decisions.json'), JSON.stringify(decisions, null, 2));
-        } catch (err) {
-          output.appendLine(`[DDD] finish: failed to write spec files: ${err instanceof Error ? err.message : String(err)}`);
-        }
+      const safeToken = safePathToken(projectId);
+      if (!repoPath) {
+        ws.send({
+          type: 'pr',
+          projectId,
+          repositoryUrl: '',
+          branchName: `ddd/${safeToken}`,
+          url: '',
+          status: 'error',
+          message: 'No workspace folder open; cannot save spec files.',
+        });
+        return;
       }
 
-      ws.send({
-        type: 'pr',
-        projectId,
-        repositoryUrl: '',
-        branchName: `ddd/${projectId}`,
-        url: '',
-        status: 'localSaved',
-      });
+      try {
+        const decisions = await store!.getDecisions(projectId);
+        const projectDir = path.join(repoPath, safeToken);
+        await fs.promises.mkdir(projectDir, { recursive: true });
+        await fs.promises.writeFile(path.join(projectDir, 'ddd-spec.json'), JSON.stringify(app.spec, null, 2));
+        await fs.promises.writeFile(path.join(projectDir, 'ddd-decisions.json'), JSON.stringify(decisions, null, 2));
+        ws.send({
+          type: 'pr',
+          projectId,
+          repositoryUrl: '',
+          branchName: `ddd/${safeToken}`,
+          url: '',
+          status: 'localSaved',
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        output.appendLine(`[DDD] finish: failed to write spec files: ${message}`);
+        ws.send({
+          type: 'pr',
+          projectId,
+          repositoryUrl: '',
+          branchName: `ddd/${safeToken}`,
+          url: '',
+          status: 'error',
+          message,
+        });
+      }
     }
   };
 

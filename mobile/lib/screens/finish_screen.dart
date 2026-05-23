@@ -6,7 +6,9 @@ import '../services/websocket_service.dart'
 import 'home_screen.dart';
 
 class FinishScreen extends StatefulWidget {
-  const FinishScreen({super.key});
+  final String projectId;
+
+  const FinishScreen({super.key, required this.projectId});
 
   @override
   State<FinishScreen> createState() => _FinishScreenState();
@@ -21,9 +23,10 @@ class _FinishScreenState extends State<FinishScreen> {
     super.initState();
     _wsSub = WebSocketService().events.listen((event) {
       if (!mounted) return;
-      if (event is WsPrEvent) {
+      if (event is WsPrEvent && event.projectId == widget.projectId) {
         setState(() => _state = _FinishDone(branchName: event.branchName, prUrl: event.url));
-      } else if (event is WsErrorEvent) {
+      } else if (event is WsErrorEvent &&
+          (event.projectId == null || event.projectId == widget.projectId)) {
         setState(() => _state = _FinishError(message: event.message.isNotEmpty ? event.message : '不明なエラー'));
       }
     });
