@@ -133,10 +133,6 @@ export class BuilderCortex {
     // TODO: detect Vite port and send PreviewEvent to mobile
   }
 
-  getProject(projectId: string): Project | undefined {
-    return this.projects.get(projectId);
-  }
-
   async registerProject(project: Project): Promise<void> {
     this.projects.set(project.id, project);
     await this.store.saveProject(project);
