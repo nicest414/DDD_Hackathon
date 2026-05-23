@@ -131,10 +131,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       const repoPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       if (repoPath) {
-        const decisions = await store!.getDecisions(currentProjectId);
-        await fs.promises.writeFile(path.join(repoPath, 'ddd-spec.json'), JSON.stringify(app.spec, null, 2));
-        await fs.promises.writeFile(path.join(repoPath, 'ddd-decisions.json'), JSON.stringify(decisions, null, 2));
-        vscode.window.showInformationMessage('DDD: ddd-spec.json / ddd-decisions.json を生成しました');
+        try {
+          const decisions = await store!.getDecisions(currentProjectId);
+          await fs.promises.writeFile(path.join(repoPath, 'ddd-spec.json'), JSON.stringify(app.spec, null, 2));
+          await fs.promises.writeFile(path.join(repoPath, 'ddd-decisions.json'), JSON.stringify(decisions, null, 2));
+          vscode.window.showInformationMessage('DDD: ddd-spec.json / ddd-decisions.json を生成しました');
+        } catch (err) {
+          console.error('[DDD] Failed to write ddd-spec.json / ddd-decisions.json:', err);
+          vscode.window.showErrorMessage('DDD: ddd-spec.json / ddd-decisions.json の書き込みに失敗しました');
+        }
       } else {
         vscode.window.showInformationMessage('DDD: App generated');
       }

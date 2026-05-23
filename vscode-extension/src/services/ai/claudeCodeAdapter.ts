@@ -1,4 +1,6 @@
 import { execFile } from 'child_process';
+import * as os from 'os';
+import * as path from 'path';
 import { promisify } from 'util';
 import * as vscode from 'vscode';
 import { AIRuntimeAdapterError, BaseAIAdapter, extractFirstJsonObject } from './aiRuntime';
@@ -11,8 +13,8 @@ export class ClaudeCodeAdapter extends BaseAIAdapter {
     const timeoutMs = cfg.get<number>('timeoutMs') ?? 30000;
     try {
       const model = cfg.get<string>('claudeModel') ?? 'claude-haiku-4-5-20251001';
-      const home = process.env.HOME ?? '';
-      const env = { ...process.env, PATH: `${home}/.local/bin:${process.env.PATH}` };
+      const localBin = path.join(os.homedir(), '.local', 'bin');
+      const env = { ...process.env, PATH: `${localBin}${path.delimiter}${process.env.PATH ?? ''}` };
       const { stdout } = await execFileAsync('claude', ['-p', prompt, '--model', model], {
         timeout: timeoutMs,
         shell: false,
