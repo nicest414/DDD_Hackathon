@@ -19,8 +19,9 @@ export class GitHubPublisher {
   async publish(app: GeneratedApp, decisions: Decision[], repoPath: string): Promise<PublishResult> {
     const safeProjectId = this._safeToken(app.projectId);
     const branch = `ddd/${safeProjectId}`;
-    const specPath = path.join(repoPath, 'ddd-spec.json');
-    const decisionsPath = path.join(repoPath, 'ddd-decisions.json');
+    const projectDir = path.join(repoPath, app.projectId);
+    const specPath = path.join(projectDir, 'ddd-spec.json');
+    const decisionsPath = path.join(projectDir, 'ddd-decisions.json');
     const originalBranch = await this._currentBranch(repoPath);
 
     try {
@@ -35,7 +36,7 @@ export class GitHubPublisher {
       await fs.writeFile(decisionsPath, JSON.stringify(decisions, null, 2));
 
       await execFileAsync('git', ['add', specPath, decisionsPath], { cwd: repoPath, timeout: GIT_TIMEOUT_MS, shell: false });
-      const hasStagedChanges = await this._hasStagedChanges(repoPath);
+      const hasStagedChanges = await this._hasStagedChanges(repoPath, [specPath, decisionsPath]);
       if (hasStagedChanges) {
         await execFileAsync('git', ['commit', '-m', 'chore: DDD generated app'], { cwd: repoPath, timeout: GIT_TIMEOUT_MS, shell: false });
       }
@@ -121,11 +122,11 @@ export class GitHubPublisher {
     }
   }
 
-  private async _hasStagedChanges(repoPath: string): Promise<boolean> {
+  private async _hasStagedChanges(repoPath: string, filePaths: string[]): Promise<boolean> {
     try {
       await execFileAsync(
         'git',
-        ['diff', '--cached', '--quiet', '--', 'ddd-spec.json', 'ddd-decisions.json'],
+        ['diff', '--cached', '--quiet', '--', ...filePaths],
         { cwd: repoPath, timeout: GIT_TIMEOUT_MS, shell: false },
       );
       return false;

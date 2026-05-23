@@ -48,10 +48,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   ws.onEvent = async (event) => {
     if (event.type === 'startSession') {
       const e = event as StartSessionEvent;
-      await cortex!.registerProject(e.project);
       currentProjectId = e.project.id;
-      output.appendLine(`[DDD] Session started: ${e.project.title}`);
-      await cortex!.startProject(e.project);
+      await cortex!.handleStartSession(e.project);
     } else if (event.type === 'swipe') {
       const e = event as SwipeEvent;
       await cortex!.handleSwipe(e.projectId, e.cardId, e.action, e.createdAt);
@@ -154,8 +152,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (repoPath) {
         try {
           const decisions = await store!.getDecisions(currentProjectId);
-          await fs.promises.writeFile(path.join(repoPath, 'ddd-spec.json'), JSON.stringify(app.spec, null, 2));
-          await fs.promises.writeFile(path.join(repoPath, 'ddd-decisions.json'), JSON.stringify(decisions, null, 2));
+          const projectDir = path.join(repoPath, currentProjectId);
+          await fs.promises.writeFile(path.join(projectDir, 'ddd-spec.json'), JSON.stringify(app.spec, null, 2));
+          await fs.promises.writeFile(path.join(projectDir, 'ddd-decisions.json'), JSON.stringify(decisions, null, 2));
           vscode.window.showInformationMessage('DDD: ddd-spec.json / ddd-decisions.json を生成しました');
         } catch (err) {
           console.error('[DDD] Failed to write ddd-spec.json / ddd-decisions.json:', err);
