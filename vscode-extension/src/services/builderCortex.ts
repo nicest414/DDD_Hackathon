@@ -215,6 +215,29 @@ export class BuilderCortex {
     this.ws.send({ type: 'preview', projectId, url: previewUrl, status: 'starting' });
   }
 
+  async handleStartSession(project: Project): Promise<void> {
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (workspaceRoot) {
+      const projectFolder = path.join(workspaceRoot, project.id);
+      let isRestoration: boolean;
+      try {
+        await fs.promises.access(projectFolder);
+        isRestoration = true;
+      } catch {
+        await fs.promises.mkdir(projectFolder, { recursive: true });
+        isRestoration = false;
+      }
+      this.output.appendLine(
+        isRestoration
+          ? `[DDD] Restoring session: ${project.title} (${project.id})`
+          : `[DDD] Created project folder: ${project.id}`,
+      );
+    }
+
+    await this.registerProject(project);
+    await this.startProject(project);
+  }
+
   async registerProject(project: Project): Promise<void> {
     this.projects.set(project.id, project);
     await this.store.saveProject(project);
