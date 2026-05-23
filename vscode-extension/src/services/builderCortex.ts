@@ -225,25 +225,7 @@ export class BuilderCortex {
   }
 
   async handleStartSession(project: Project): Promise<void> {
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (workspaceRoot) {
-      const safeProjectId = safePathToken(project.id);
-      const projectFolder = path.join(workspaceRoot, safeProjectId);
-      let isRestoration: boolean;
-      try {
-        await fs.promises.access(projectFolder);
-        isRestoration = true;
-      } catch {
-        await fs.promises.mkdir(projectFolder, { recursive: true });
-        isRestoration = false;
-      }
-      this.output.appendLine(
-        isRestoration
-          ? `[DDD] Restoring session: ${project.title} (${safeProjectId})`
-          : `[DDD] Created project folder: ${safeProjectId} (projectId=${project.id})`,
-      );
-    }
-
+    this.output.appendLine(`[DDD] Starting session: ${project.title} (${safePathToken(project.id)})`);
     await this.registerProject(project);
     await this.startProject(project);
   }
