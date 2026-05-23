@@ -6,6 +6,7 @@ import { Project, Decision, DecisionCard, GeneratedApp } from '../models/types';
 import { AIRuntimeAdapter, AIRuntimeAdapterError } from './ai/aiRuntime';
 import { DDDWebSocketServer } from './websocketServer';
 import { DecisionStore } from './decisionStore';
+import { safePathToken } from './pathUtils';
 
 export class BuilderCortex {
   private projects = new Map<string, Project>();
@@ -136,7 +137,8 @@ export class BuilderCortex {
       return;
     }
 
-    const generatedAppPath = path.join(workspacePath, 'generated-app');
+    const safeProjectId = safePathToken(projectId);
+    const generatedAppPath = path.join(workspacePath, safeProjectId, 'generated-app');
     if (!fs.existsSync(path.join(generatedAppPath, 'package.json'))) {
       vscode.window.showWarningMessage('DDD: Save locally before opening preview.');
       return;
@@ -218,7 +220,7 @@ export class BuilderCortex {
   async handleStartSession(project: Project): Promise<void> {
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (workspaceRoot) {
-      const safeProjectId = this._safePathToken(project.id);
+      const safeProjectId = safePathToken(project.id);
       const projectFolder = path.join(workspaceRoot, safeProjectId);
       let isRestoration: boolean;
       try {
@@ -345,11 +347,4 @@ export class BuilderCortex {
     return undefined;
   }
 
-  private _safePathToken(value: string): string {
-    const sanitized = value.replace(/[^A-Za-z0-9_-]/g, '-');
-    if (/[A-Za-z0-9_]/.test(sanitized)) {
-      return sanitized;
-    }
-    return 'project';
-  }
 }

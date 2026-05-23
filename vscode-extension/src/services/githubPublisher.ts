@@ -1,9 +1,9 @@
 import { execFile } from 'child_process';
-import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
 import { GeneratedApp, Decision } from '../models/types';
+import { safePathToken } from './pathUtils';
 
 const execFileAsync = promisify(execFile);
 const GIT_TIMEOUT_MS = 30_000;
@@ -17,7 +17,7 @@ export interface PublishResult {
 
 export class GitHubPublisher {
   async saveLocal(app: GeneratedApp, decisions: Decision[], repoPath: string): Promise<PublishResult> {
-    const safeProjectId = this._safeToken(app.projectId);
+    const safeProjectId = safePathToken(app.projectId);
     const projectDir = path.join(repoPath, safeProjectId);
     const specPath = path.join(projectDir, 'ddd-spec.json');
     const decisionsPath = path.join(projectDir, 'ddd-decisions.json');
@@ -25,7 +25,7 @@ export class GitHubPublisher {
     await fs.mkdir(projectDir, { recursive: true });
     await fs.writeFile(specPath, JSON.stringify(app.spec, null, 2));
     await fs.writeFile(decisionsPath, JSON.stringify(decisions, null, 2));
-    await this._writeGeneratedApp(app, decisions, path.join(repoPath, 'generated-app'));
+    await this._writeGeneratedApp(app, decisions, path.join(projectDir, 'generated-app'));
 
     return {
       repositoryUrl: '',
@@ -35,7 +35,7 @@ export class GitHubPublisher {
   }
 
   async publish(app: GeneratedApp, decisions: Decision[], repoPath: string): Promise<PublishResult> {
-    const safeProjectId = this._safeToken(app.projectId);
+    const safeProjectId = safePathToken(app.projectId);
     const branch = `ddd/${safeProjectId}`;
     const projectDir = path.join(repoPath, safeProjectId);
     const specPath = path.join(projectDir, 'ddd-spec.json');
@@ -155,16 +155,6 @@ export class GitHubPublisher {
       }
       throw err;
     }
-  }
-
-  private _safeToken(value: string): string {
-    const sanitized = value.replace(/[^A-Za-z0-9_-]/g, '-');
-    if (/[A-Za-z0-9_]/.test(sanitized)) {
-      return sanitized;
-    }
-
-    const suffix = createHash('sha1').update(value).digest('hex').slice(0, 8);
-    return `token-${suffix}`;
   }
 
   private async _writeGeneratedApp(app: GeneratedApp, decisions: Decision[], appPath: string): Promise<void> {

@@ -8,20 +8,13 @@ import { BaselineDopamine } from './services/baselineDopamine';
 import { BuilderCortex } from './services/builderCortex';
 import { DecisionStore } from './services/decisionStore';
 import { GitHubPublisher } from './services/githubPublisher';
+import { safePathToken } from './services/pathUtils';
 import { SwipeEvent, StartSessionEvent } from './models/types';
 
 let server: DDDWebSocketServer | null = null;
 let cortex: BuilderCortex | null = null;
 let store: DecisionStore | null = null;
 let currentProjectId: string | null = null;
-
-function safePathToken(value: string): string {
-  const sanitized = value.replace(/[^A-Za-z0-9_-]/g, '-');
-  if (/[A-Za-z0-9_]/.test(sanitized)) {
-    return sanitized;
-  }
-  return 'project';
-}
 
 async function showAIConnectionResult(result: AIRuntimeConnectionResult): Promise<void> {
   if (result.ok) {
