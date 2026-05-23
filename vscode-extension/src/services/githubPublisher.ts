@@ -129,8 +129,11 @@ export class GitHubPublisher {
         { cwd: repoPath, timeout: GIT_TIMEOUT_MS, shell: false },
       );
       return false;
-    } catch {
-      return true;
+    } catch (err) {
+      if (err && typeof err === 'object' && 'code' in err && err.code === 1) {
+        return true;
+      }
+      throw err;
     }
   }
 

@@ -200,6 +200,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           status: 'created',
         });
         vscode.window.showInformationMessage(`DDD: PR created → ${result.pullRequestUrl}`);
+      } else if (result.repositoryUrl) {
+        const message = `DDD: PR creation failed after pushing to ${result.repositoryUrl}.`;
+        ws.send({
+          type: 'error',
+          projectId,
+          code: 'GITHUB_UNAVAILABLE',
+          message,
+          recoverable: true,
+        });
+        vscode.window.showErrorMessage(message);
       } else {
         ws.send({
           type: 'pr',
