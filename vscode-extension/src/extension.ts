@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import * as fs from 'fs';
 import { DDDWebSocketServer } from './services/websocketServer';
 import { AIRuntimeDispatcher } from './services/ai/aiDispatcher';
@@ -79,16 +78,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const publisher = new GitHubPublisher();
         try {
           const decisions = await store!.getDecisions(projectId);
-          await publisher.saveLocal(app, decisions, repoPath);
+          const result = await publisher.saveLocal(app, decisions, repoPath);
           output.appendLine('[DDD] finish: generated-app saved locally');
           ws.send({
             type: 'pr',
             projectId,
-            repositoryUrl: '',
-            branchName: `ddd/${safePathToken(projectId)}`,
-            url: '',
+            repositoryUrl: result.repositoryUrl,
+            branchName: result.branchName || `ddd/${safePathToken(projectId)}`,
+            url: result.pullRequestUrl,
             status: 'localSaved',
           });
+          return;
         } catch (err) {
           output.appendLine(`[DDD] finish: failed to save generated app: ${err instanceof Error ? err.message : String(err)}`);
           ws.send({
@@ -96,10 +96,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             projectId,
             code: 'UNKNOWN_ERROR',
             message: 'Failed to save generated app locally.',
-            recoverable: false,
+            recoverable: true,
           });
+          return;
         }
       }
+
+      ws.send({
+        type: 'error',
+        projectId,
+        code: 'UNKNOWN_ERROR',
+        message: 'No workspace folder open. Could not save generated app locally.',
+        recoverable: true,
+      });
     }
   };
 
@@ -199,14 +208,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (repoPath) {
         try {
           const decisions = await store!.getDecisions(currentProjectId);
-          const projectDir = path.join(repoPath, safePathToken(currentProjectId));
-          await fs.promises.mkdir(projectDir, { recursive: true });
-          await fs.promises.writeFile(path.join(projectDir, 'ddd-spec.json'), JSON.stringify(app.spec, null, 2));
-          await fs.promises.writeFile(path.join(projectDir, 'ddd-decisions.json'), JSON.stringify(decisions, null, 2));
-          vscode.window.showInformationMessage('DDD: ddd-spec.json / ddd-decisions.json を生成しました');
+          await new GitHubPublisher().saveLocal(app, decisions, repoPath);
+          vscode.window.showInformationMessage('DDD: 生成物を ddd-generated-apps に保存しました');
         } catch (err) {
-          console.error('[DDD] Failed to write ddd-spec.json / ddd-decisions.json:', err);
-          vscode.window.showErrorMessage('DDD: ddd-spec.json / ddd-decisions.json の書き込みに失敗しました');
+          console.error('[DDD] Failed to save generated app:', err);
+          vscode.window.showErrorMessage('DDD: 生成物の保存に失敗しました');
         }
       } else {
         vscode.window.showInformationMessage('DDD: App generated');

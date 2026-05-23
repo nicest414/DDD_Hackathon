@@ -16,6 +16,11 @@ class WsCardEvent extends WsIncomingEvent {
   WsCardEvent(this.card);
 }
 
+class WsCompleteEvent extends WsIncomingEvent {
+  final String projectId;
+  WsCompleteEvent({required this.projectId});
+}
+
 class WsPreviewEvent extends WsIncomingEvent {
   final String projectId;
   final String url;
@@ -140,6 +145,16 @@ class WebSocketService {
           return null;
         }
         return WsPreviewEvent(projectId: previewProjectId, url: previewUrl);
+      case 'complete':
+        final completeProjectId = data['projectId'] as String?;
+        if (completeProjectId == null) {
+          developer.log(
+            'WebSocket complete event missing required fields',
+            name: 'WebSocketService',
+          );
+          return null;
+        }
+        return WsCompleteEvent(projectId: completeProjectId);
       case 'pr':
         final prProjectId = data['projectId'] as String?;
         if (prProjectId == null) {

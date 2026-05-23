@@ -8,6 +8,7 @@ import { safePathToken } from './pathUtils';
 const execFileAsync = promisify(execFile);
 const GIT_TIMEOUT_MS = 30_000;
 const GH_TIMEOUT_MS = 30_000;
+export const DDD_GENERATED_APPS_DIR = 'ddd-generated-apps';
 
 export interface PublishResult {
   repositoryUrl: string;
@@ -18,7 +19,7 @@ export interface PublishResult {
 export class GitHubPublisher {
   async saveLocal(app: GeneratedApp, decisions: Decision[], repoPath: string): Promise<PublishResult> {
     const safeProjectId = safePathToken(app.projectId);
-    const projectDir = path.join(repoPath, safeProjectId);
+    const projectDir = path.join(repoPath, DDD_GENERATED_APPS_DIR, safeProjectId);
     const specPath = path.join(projectDir, 'ddd-spec.json');
     const decisionsPath = path.join(projectDir, 'ddd-decisions.json');
 
@@ -37,7 +38,7 @@ export class GitHubPublisher {
   async publish(app: GeneratedApp, decisions: Decision[], repoPath: string): Promise<PublishResult> {
     const safeProjectId = safePathToken(app.projectId);
     const branch = `ddd/${safeProjectId}`;
-    const projectDir = path.join(repoPath, safeProjectId);
+    const projectDir = path.join(repoPath, DDD_GENERATED_APPS_DIR, safeProjectId);
     const specPath = path.join(projectDir, 'ddd-spec.json');
     const decisionsPath = path.join(projectDir, 'ddd-decisions.json');
     const originalBranch = await this._currentBranch(repoPath);
@@ -182,7 +183,7 @@ export class GitHubPublisher {
         preview: 'vite preview --host 0.0.0.0',
       },
       devDependencies: {
-        vite: '^5.4.0',
+        vite: '^8.0.14',
       },
     }, null, 2)}\n`;
   }
@@ -206,15 +207,23 @@ export class GitHubPublisher {
 
   private _mainJs(app: GeneratedApp, decisions: Decision[]): string {
     return `import './styles.css';
-
-const appSpec = ${JSON.stringify(app.spec, null, 2)};
-const decisions = ${JSON.stringify(decisions, null, 2)};
+import appSpec from '../../ddd-spec.json';
+import decisions from '../../ddd-decisions.json';
 
 const asArray = (value) => Array.isArray(value) ? value : [];
 const screens = asArray(appSpec.screens);
 const features = asArray(appSpec.features);
 const acceptedCount = decisions.filter((decision) => decision.action === 'accepted').length;
 const rejectedCount = decisions.filter((decision) => decision.action === 'rejected').length;
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
 
 document.querySelector('#app').innerHTML = \`
   <main class="shell">
@@ -266,15 +275,6 @@ document.querySelector('#app').innerHTML = \`
     </section>
   </main>
 \`;
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
-}
 `;
   }
 
