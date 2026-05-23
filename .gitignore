@@ -66,3 +66,6 @@ temp/
 
 # DDD test workspace
 ddd-test-workspace/private/
+
+# DDD generated local apps
+ddd-generated-apps/

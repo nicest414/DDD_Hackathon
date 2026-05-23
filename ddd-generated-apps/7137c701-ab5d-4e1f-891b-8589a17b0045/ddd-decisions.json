@@ -1,0 +1,18 @@
+[
+  {
+    "id": "d-1779558808409",
+    "projectId": "7137c701-ab5d-4e1f-891b-8589a17b0045",
+    "cardId": "card-1779558730449",
+    "action": "accepted",
+    "reason": "",
+    "createdAt": "2026-05-24T02:53:27.524281"
+  },
+  {
+    "id": "d-1779558928954",
+    "projectId": "7137c701-ab5d-4e1f-891b-8589a17b0045",
+    "cardId": "card-1779558817525",
+    "action": "accepted",
+    "reason": "",
+    "createdAt": "2026-05-24T02:55:28.068036"
+  }
+]
