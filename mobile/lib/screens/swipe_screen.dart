@@ -135,7 +135,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
 
     setState(() {
       _currentIndex--;
-      if (_decisions.isNotEmpty) _decisions.removeLast();
+      while (_decisions.length > _currentIndex) {
+        _decisions.removeLast();
+      }
     });
   }
 
