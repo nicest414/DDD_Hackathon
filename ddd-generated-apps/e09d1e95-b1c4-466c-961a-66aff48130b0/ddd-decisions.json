@@ -1,0 +1,26 @@
+[
+  {
+    "id": "d-1779558324743",
+    "projectId": "e09d1e95-b1c4-466c-961a-66aff48130b0",
+    "cardId": "card-1779558315720",
+    "action": "accepted",
+    "reason": "",
+    "createdAt": "2026-05-24T02:45:23.856891"
+  },
+  {
+    "id": "d-1779558357088",
+    "projectId": "e09d1e95-b1c4-466c-961a-66aff48130b0",
+    "cardId": "card-1779558333034",
+    "action": "accepted",
+    "reason": "",
+    "createdAt": "2026-05-24T02:45:56.204771"
+  },
+  {
+    "id": "d-1779558375368",
+    "projectId": "e09d1e95-b1c4-466c-961a-66aff48130b0",
+    "cardId": "card-1779558365720",
+    "action": "accepted",
+    "reason": "",
+    "createdAt": "2026-05-24T02:46:14.421219"
+  }
+]
