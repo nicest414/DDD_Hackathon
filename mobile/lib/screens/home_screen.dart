@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:uuid/uuid.dart';
-import '../config/app_config.dart';
 import '../models/project.dart';
 import 'swipe_screen.dart';
 
@@ -16,7 +15,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _controller = TextEditingController();
   final _examples = ['習慣トラッカー', 'Todoリスト', '日記アプリ', '支出メモ', '読書記録'];
   Project? _activeProject;
-  String _serverUrl = AppConfig.serverUrl;
+  String? _serverUrl;
 
   @override
   void dispose() {
@@ -49,7 +48,11 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     if (_activeProject != null) {
-      return SwipeScreen(project: _activeProject!, serverUrl: _serverUrl);
+      return SwipeScreen(project: _activeProject!, serverUrl: _serverUrl!);
+    }
+
+    if (_serverUrl == null) {
+      return _ConnectionGate(onScan: _scanAndConnect);
     }
 
     return Scaffold(
@@ -72,11 +75,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         fontWeight: FontWeight.w800,
                         height: 1.4,
                       ),
-                    ),
-                    const SizedBox(height: 24),
-                    _ConnectionPanel(
-                      serverUrl: _serverUrl,
-                      onScan: _scanAndConnect,
                     ),
                     const SizedBox(height: 24),
                     Container(
@@ -146,44 +144,61 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _ConnectionPanel extends StatelessWidget {
-  final String serverUrl;
+class _ConnectionGate extends StatelessWidget {
   final VoidCallback onScan;
 
-  const _ConnectionPanel({required this.serverUrl, required this.onScan});
+  const _ConnectionGate({required this.onScan});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF151522),
-        border: Border.all(color: const Color(0xFF2a2a3e)),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          FilledButton.icon(
-            onPressed: onScan,
-            icon: const Icon(Icons.qr_code_scanner),
-            label: const Text('Scan & Connect'),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF2563eb),
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            children: [
+              const Spacer(),
+              _Logo(),
+              const SizedBox(height: 40),
+              const Text(
+                'VS Code拡張に\n接続してください',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  height: 1.4,
+                ),
               ),
-            ),
+              const SizedBox(height: 16),
+              const Text(
+                'OutputパネルのQRコードを読み取ると、作りたいアプリを書く画面へ進みます。',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.6,
+                  color: Color(0xFF94a3b8),
+                ),
+              ),
+              const Spacer(),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: onScan,
+                  icon: const Icon(Icons.qr_code_scanner),
+                  label: const Text('QRコードを読み取る'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF2563eb),
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
           ),
-          const SizedBox(height: 10),
-          Text(
-            serverUrl,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12, color: Color(0xFF94a3b8)),
-          ),
-        ],
+        ),
       ),
     );
   }
