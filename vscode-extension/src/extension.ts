@@ -174,7 +174,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showErrorMessage('DDD: No workspace folder open.');
         return;
       }
-      const result = await publisher.publish(app, decisions, repoPath);
+      let result;
+      try {
+        result = await publisher.publish(app, decisions, repoPath);
+      } catch (err) {
+        output.appendLine(`[DDD] Publish failed before local files were saved: ${err instanceof Error ? err.message : String(err)}`);
+        ws.send({
+          type: 'error',
+          projectId,
+          code: 'GITHUB_UNAVAILABLE',
+          message: 'DDD: GitHub publish failed before local files were saved.',
+          recoverable: true,
+        });
+        vscode.window.showErrorMessage('DDD: GitHub publish failed before local files were saved.');
+        return;
+      }
 
       if (result.pullRequestUrl) {
         ws.send({
@@ -186,6 +200,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           status: 'created',
         });
         vscode.window.showInformationMessage(`DDD: PR created → ${result.pullRequestUrl}`);
+      } else if (result.repositoryUrl) {
+        const message = `DDD: PR creation failed after pushing to ${result.repositoryUrl}.`;
+        ws.send({
+          type: 'error',
+          projectId,
+          code: 'GITHUB_UNAVAILABLE',
+          message,
+          recoverable: true,
+        });
+        vscode.window.showErrorMessage(message);
       } else {
         ws.send({
           type: 'pr',
