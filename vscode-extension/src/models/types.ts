@@ -118,6 +118,7 @@ export interface PreviewEvent {
   type: 'preview';
   projectId: string;
   url: string;
+  status: 'starting' | 'ready';
 }
 
 export interface PREvent {

@@ -1,9 +1,16 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:device_preview/device_preview.dart';
 import 'services/websocket_service.dart';
 import 'screens/root_screen.dart';
 
 void main() {
-  runApp(const DDDApp());
+  runApp(
+    DevicePreview(
+      enabled: !kReleaseMode,
+      builder: (context) => const DDDApp(),
+    ),
+  );
 }
 
 class DDDApp extends StatefulWidget {
@@ -25,6 +32,9 @@ class _DDDAppState extends State<DDDApp> {
     return MaterialApp(
       title: 'DDD',
       debugShowCheckedModeBanner: false,
+      builder: DevicePreview.appBuilder,
+      locale: DevicePreview.locale(context),
+      useInheritedMediaQuery: true,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF7c3aed),

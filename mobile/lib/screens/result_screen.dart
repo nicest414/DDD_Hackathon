@@ -144,8 +144,8 @@ class _ResultScreenState extends State<ResultScreen> {
                   !_result.hasError) ...[
                 const _SectionCard(
                   icon: '⏳',
-                  title: '公開結果',
-                  child: _WaitingResult(message: 'Pull Requestの結果を待っています。'),
+                  title: '保存結果',
+                  child: _WaitingResult(message: 'ローカル保存の結果を待っています。'),
                 ),
                 const SizedBox(height: 12),
               ],
@@ -400,8 +400,8 @@ class _LocalSavedResult extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final message = branchName.isEmpty
-        ? 'GitHub連携に失敗しましたが、生成結果はローカルに保存されました。'
-        : 'GitHub連携に失敗しましたが、生成結果は $branchName に保存されました。';
+        ? '生成結果はローカルに保存されました。'
+        : '生成結果は $branchName に保存されました。';
 
     return Text(
       message,

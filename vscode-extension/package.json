@@ -37,7 +37,7 @@
       },
       {
         "command": "ddd.publishToGitHub",
-        "title": "DDD: Publish to GitHub"
+        "title": "DDD: Save Locally"
       }
     ],
     "configuration": {
@@ -83,6 +83,18 @@
           "type": "boolean",
           "default": true,
           "description": "Fall back to mock data when AI fails"
+        },
+        "ddd.preview.packageManager": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "npm",
+            "pnpm",
+            "yarn",
+            "bun"
+          ],
+          "description": "Package manager used to install and run generated-app previews"
         }
       }
     }
