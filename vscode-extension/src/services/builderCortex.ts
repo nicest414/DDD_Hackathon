@@ -7,6 +7,7 @@ import { AIRuntimeAdapter, AIRuntimeAdapterError } from './ai/aiRuntime';
 import { DDDWebSocketServer } from './websocketServer';
 import { DecisionStore } from './decisionStore';
 import { safePathToken } from './pathUtils';
+import { DDD_GENERATED_APPS_DIR } from './githubPublisher';
 
 export class BuilderCortex {
   private projects = new Map<string, Project>();
@@ -84,6 +85,9 @@ export class BuilderCortex {
     const nextCard = await this._nextCard(projectId);
     if (nextCard) {
       this.ws.send({ type: 'card', card: nextCard });
+    } else {
+      this.ws.send({ type: 'complete', projectId });
+      this.output.appendLine(`[DDD] Session complete: ${projectId}`);
     }
   }
 
@@ -138,7 +142,7 @@ export class BuilderCortex {
     }
 
     const safeProjectId = safePathToken(projectId);
-    const generatedAppPath = path.join(workspacePath, safeProjectId, 'generated-app');
+    const generatedAppPath = path.join(workspacePath, DDD_GENERATED_APPS_DIR, safeProjectId, 'generated-app');
     if (!fs.existsSync(path.join(generatedAppPath, 'package.json'))) {
       vscode.window.showWarningMessage('DDD: Save locally before opening preview.');
       return;

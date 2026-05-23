@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:uuid/uuid.dart';
 import '../models/project.dart';
 import 'swipe_screen.dart';
@@ -14,6 +15,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _controller = TextEditingController();
   final _examples = ['習慣トラッカー', 'Todoリスト', '日記アプリ', '支出メモ', '読書記録'];
   Project? _activeProject;
+  String? _serverUrl;
 
   @override
   void dispose() {
@@ -32,10 +34,25 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _activeProject = project);
   }
 
+  Future<void> _scanAndConnect() async {
+    final scannedUrl = await Navigator.of(
+      context,
+    ).push<String>(MaterialPageRoute(builder: (_) => const _QrScannerScreen()));
+    if (scannedUrl == null || !mounted) return;
+    setState(() => _serverUrl = scannedUrl);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('接続先を設定しました: $scannedUrl')));
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_activeProject != null) {
-      return SwipeScreen(project: _activeProject!);
+      return SwipeScreen(project: _activeProject!, serverUrl: _serverUrl!);
+    }
+
+    if (_serverUrl == null) {
+      return _ConnectionGate(onScan: _scanAndConnect);
     }
 
     return Scaffold(
@@ -122,6 +139,145 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ConnectionGate extends StatelessWidget {
+  final VoidCallback onScan;
+
+  const _ConnectionGate({required this.onScan});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            children: [
+              const Spacer(),
+              _Logo(),
+              const SizedBox(height: 40),
+              const Text(
+                'VS Code拡張に\n接続してください',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'OutputパネルのQRコードを読み取ると、作りたいアプリを書く画面へ進みます。',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.6,
+                  color: Color(0xFF94a3b8),
+                ),
+              ),
+              const Spacer(),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: onScan,
+                  icon: const Icon(Icons.qr_code_scanner),
+                  label: const Text('QRコードを読み取る'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF2563eb),
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QrScannerScreen extends StatefulWidget {
+  const _QrScannerScreen();
+
+  @override
+  State<_QrScannerScreen> createState() => _QrScannerScreenState();
+}
+
+class _QrScannerScreenState extends State<_QrScannerScreen> {
+  final _controller = MobileScannerController(
+    detectionSpeed: DetectionSpeed.noDuplicates,
+    formats: [BarcodeFormat.qrCode],
+  );
+  bool _handled = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleDetect(BarcodeCapture capture) {
+    if (_handled) return;
+    String? value;
+    for (final barcode in capture.barcodes) {
+      final rawValue = barcode.rawValue?.trim();
+      if (rawValue != null &&
+          (rawValue.startsWith('ws://') || rawValue.startsWith('wss://'))) {
+        value = rawValue;
+        break;
+      }
+    }
+    if (value == null) return;
+
+    _handled = true;
+    if (!mounted) return;
+    Navigator.of(context).pop(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0f0f1a),
+      appBar: AppBar(
+        title: const Text('Scan & Connect'),
+        backgroundColor: const Color(0xFF0f0f1a),
+      ),
+      body: Stack(
+        children: [
+          MobileScanner(controller: _controller, onDetect: _handleDetect),
+          Center(
+            child: Container(
+              width: 240,
+              height: 240,
+              decoration: BoxDecoration(
+                border: Border.all(color: const Color(0xFFa855f7), width: 3),
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          ),
+          const Positioned(
+            left: 24,
+            right: 24,
+            bottom: 32,
+            child: Text(
+              'VS Code出力パネルのQRコードを読み取ってください',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
