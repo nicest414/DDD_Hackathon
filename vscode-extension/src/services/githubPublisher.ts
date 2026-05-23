@@ -34,7 +34,7 @@ export class GitHubPublisher {
   async publish(app: GeneratedApp, decisions: Decision[], repoPath: string): Promise<PublishResult> {
     const safeProjectId = this._safeToken(app.projectId);
     const branch = `ddd/${safeProjectId}`;
-    const projectDir = path.join(repoPath, app.projectId);
+    const projectDir = path.join(repoPath, safeProjectId);
     const specPath = path.join(projectDir, 'ddd-spec.json');
     const decisionsPath = path.join(projectDir, 'ddd-decisions.json');
     const originalBranch = await this._currentBranch(repoPath);

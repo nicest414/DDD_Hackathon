@@ -15,6 +15,14 @@ let cortex: BuilderCortex | null = null;
 let store: DecisionStore | null = null;
 let currentProjectId: string | null = null;
 
+function safePathToken(value: string): string {
+  const sanitized = value.replace(/[^A-Za-z0-9_-]/g, '-');
+  if (/[A-Za-z0-9_]/.test(sanitized)) {
+    return sanitized;
+  }
+  return 'project';
+}
+
 async function showAIConnectionResult(result: AIRuntimeConnectionResult): Promise<void> {
   if (result.ok) {
     vscode.window.showInformationMessage(`DDD: ${result.message}`);
@@ -152,7 +160,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (repoPath) {
         try {
           const decisions = await store!.getDecisions(currentProjectId);
-          const projectDir = path.join(repoPath, currentProjectId);
+          const projectDir = path.join(repoPath, safePathToken(currentProjectId));
           await fs.promises.mkdir(projectDir, { recursive: true });
           await fs.promises.writeFile(path.join(projectDir, 'ddd-spec.json'), JSON.stringify(app.spec, null, 2));
           await fs.promises.writeFile(path.join(projectDir, 'ddd-decisions.json'), JSON.stringify(decisions, null, 2));

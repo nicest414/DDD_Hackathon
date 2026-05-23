@@ -218,37 +218,20 @@ export class BuilderCortex {
   async handleStartSession(project: Project): Promise<void> {
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (workspaceRoot) {
-      const normalizedId = path.normalize(project.id);
-      const resolvedRoot = path.resolve(workspaceRoot);
-      const resolvedFolder = path.resolve(workspaceRoot, normalizedId);
-      if (
-        path.isAbsolute(normalizedId) ||
-        normalizedId.split(path.sep).includes('..') ||
-        !resolvedFolder.startsWith(resolvedRoot + path.sep)
-      ) {
-        this.output.appendLine(`[DDD] Rejected unsafe projectId: ${project.id}`);
-        this.ws.send({
-          type: 'error',
-          projectId: project.id,
-          code: 'INVALID_EVENT',
-          message: 'Invalid projectId.',
-          recoverable: false,
-        });
-        return;
-      }
-
+      const safeProjectId = this._safePathToken(project.id);
+      const projectFolder = path.join(workspaceRoot, safeProjectId);
       let isRestoration: boolean;
       try {
-        await fs.promises.access(resolvedFolder);
+        await fs.promises.access(projectFolder);
         isRestoration = true;
       } catch {
-        await fs.promises.mkdir(resolvedFolder, { recursive: true });
+        await fs.promises.mkdir(projectFolder, { recursive: true });
         isRestoration = false;
       }
       this.output.appendLine(
         isRestoration
-          ? `[DDD] Restoring session: ${project.title} (${project.id})`
-          : `[DDD] Created project folder: ${project.id}`,
+          ? `[DDD] Restoring session: ${project.title} (${safeProjectId})`
+          : `[DDD] Created project folder: ${safeProjectId} (projectId=${project.id})`,
       );
     }
 
@@ -360,5 +343,13 @@ export class BuilderCortex {
     if (fs.existsSync(path.join(directory, 'bun.lockb')) || fs.existsSync(path.join(directory, 'bun.lock'))) { return 'bun'; }
     if (fs.existsSync(path.join(directory, 'package-lock.json'))) { return 'npm'; }
     return undefined;
+  }
+
+  private _safePathToken(value: string): string {
+    const sanitized = value.replace(/[^A-Za-z0-9_-]/g, '-');
+    if (/[A-Za-z0-9_]/.test(sanitized)) {
+      return sanitized;
+    }
+    return 'project';
   }
 }
