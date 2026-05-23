@@ -215,6 +215,47 @@ export class BuilderCortex {
     this.ws.send({ type: 'preview', projectId, url: previewUrl, status: 'starting' });
   }
 
+  async handleStartSession(project: Project): Promise<void> {
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (workspaceRoot) {
+      const normalizedId = path.normalize(project.id);
+      const resolvedRoot = path.resolve(workspaceRoot);
+      const resolvedFolder = path.resolve(workspaceRoot, normalizedId);
+      if (
+        path.isAbsolute(normalizedId) ||
+        normalizedId.split(path.sep).includes('..') ||
+        !resolvedFolder.startsWith(resolvedRoot + path.sep)
+      ) {
+        this.output.appendLine(`[DDD] Rejected unsafe projectId: ${project.id}`);
+        this.ws.send({
+          type: 'error',
+          projectId: project.id,
+          code: 'INVALID_EVENT',
+          message: 'Invalid projectId.',
+          recoverable: false,
+        });
+        return;
+      }
+
+      let isRestoration: boolean;
+      try {
+        await fs.promises.access(resolvedFolder);
+        isRestoration = true;
+      } catch {
+        await fs.promises.mkdir(resolvedFolder, { recursive: true });
+        isRestoration = false;
+      }
+      this.output.appendLine(
+        isRestoration
+          ? `[DDD] Restoring session: ${project.title} (${project.id})`
+          : `[DDD] Created project folder: ${project.id}`,
+      );
+    }
+
+    await this.registerProject(project);
+    await this.startProject(project);
+  }
+
   async registerProject(project: Project): Promise<void> {
     this.projects.set(project.id, project);
     await this.store.saveProject(project);
