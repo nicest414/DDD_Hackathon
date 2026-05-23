@@ -1,4 +1,6 @@
+import * as os from 'os';
 import * as vscode from 'vscode';
+import * as qrcode from 'qrcode-terminal';
 import { WebSocketServer, WebSocket } from 'ws';
 import { ErrorEvent, IncomingEvent, OutgoingEvent, Project } from '../models/types';
 
@@ -15,13 +17,13 @@ export class DDDWebSocketServer {
   start(port = 3000): void {
     if (this.wss) { return; }
     try {
-      this.wss = new WebSocketServer({ port });
+      this.wss = new WebSocketServer({ host: '0.0.0.0', port });
     } catch (err) {
       this.wss = null;
       this.output.appendLine(`[DDD] Failed to start WebSocket server: ${this._errorMessage(err)}`);
       return;
     }
-    this.output.appendLine(`[DDD] WebSocket server listening on ws://localhost:${port}`);
+    this._printConnectionInfo(port);
 
     this.wss.on('error', (err) => {
       this.output.appendLine(`[DDD] WebSocket server error: ${this._errorMessage(err)}`);
@@ -248,5 +250,57 @@ export class DDDWebSocketServer {
 
   private _errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
+  }
+
+  private _printConnectionInfo(port: number): void {
+    const localIps = this._getLocalIPv4Addresses();
+    this.output.appendLine(`[DDD] WebSocket server listening on 0.0.0.0:${port}`);
+    this.output.appendLine(`[DDD] Local fallback URL: ws://localhost:${port}`);
+
+    if (localIps.length === 0) {
+      this.output.appendLine('[DDD] No local IPv4 address found. Connect this PC to Wi-Fi and restart the extension.');
+      return;
+    }
+
+    const primaryUrl = `ws://${localIps[0]}:${port}`;
+    this.output.appendLine(`[DDD] Scan this QR from the Flutter app: ${primaryUrl}`);
+    qrcode.generate(primaryUrl, { small: true }, (qr) => {
+      this.output.appendLine(qr);
+    });
+
+    if (localIps.length > 1) {
+      this.output.appendLine('[DDD] Other local network URLs:');
+      for (const ip of localIps.slice(1)) {
+        this.output.appendLine(`[DDD]   ws://${ip}:${port}`);
+      }
+    }
+  }
+
+  private _getLocalIPv4Addresses(): string[] {
+    const addresses: Array<{ address: string; interfaceName: string }> = [];
+    for (const [interfaceName, entries] of Object.entries(os.networkInterfaces())) {
+      for (const entry of entries ?? []) {
+        if (entry.family === 'IPv4' && !entry.internal && this._isPrivateIPv4(entry.address)) {
+          addresses.push({ address: entry.address, interfaceName });
+        }
+      }
+    }
+    return addresses
+      .sort((a, b) => this._interfaceScore(a.interfaceName) - this._interfaceScore(b.interfaceName))
+      .map((entry) => entry.address);
+  }
+
+  private _isPrivateIPv4(address: string): boolean {
+    return (
+      address.startsWith('10.') ||
+      address.startsWith('192.168.') ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(address)
+    );
+  }
+
+  private _interfaceScore(interfaceName: string): number {
+    if (/^(en|eth|wlan|wi-fi)/i.test(interfaceName)) { return 0; }
+    if (/^(bridge|docker|vbox|vmnet|utun|awdl|llw)/i.test(interfaceName)) { return 2; }
+    return 1;
   }
 }

@@ -6,10 +6,7 @@ import 'screens/root_screen.dart';
 
 void main() {
   runApp(
-    DevicePreview(
-      enabled: !kReleaseMode,
-      builder: (context) => const DDDApp(),
-    ),
+    DevicePreview(enabled: !kReleaseMode, builder: (context) => const DDDApp()),
   );
 }
 
@@ -34,7 +31,6 @@ class _DDDAppState extends State<DDDApp> {
       debugShowCheckedModeBanner: false,
       builder: DevicePreview.appBuilder,
       locale: DevicePreview.locale(context),
-      useInheritedMediaQuery: true,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF7c3aed),
