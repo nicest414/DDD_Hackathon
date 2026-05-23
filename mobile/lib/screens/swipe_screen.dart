@@ -162,17 +162,30 @@ class _SwipeScreenState extends State<SwipeScreen> {
 
     Future.delayed(const Duration(milliseconds: 350), () {
       if (!mounted) return;
+      var waitingForCard = false;
       setState(() {
         _currentIndex++;
         _animating = false;
-        _waitingForCard = _currentCard == null;
+        waitingForCard = _currentCard == null;
+        _waitingForCard = waitingForCard;
       });
-      if (_waitingForCard) {
+
+      if (waitingForCard) {
+        _sendPendingDecisionNow(card.id);
         _scheduleLoadingVideo();
       } else {
         _maybeShowVideo();
       }
     });
+  }
+
+  void _sendPendingDecisionNow(String cardId) {
+    final timer = _pending.remove(cardId);
+    if (timer == null) return;
+
+    timer.cancel();
+    final decision = _decisions.lastWhere((d) => d.cardId == cardId);
+    _ws.sendDecision(decision);
   }
 
   void _scheduleLoadingVideo() {

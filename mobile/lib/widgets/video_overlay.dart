@@ -49,6 +49,7 @@ class _VideoOverlayState extends State<VideoOverlay> {
     final color = _heartActive ? const Color(0xFFef4444) : Colors.white;
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onDoubleTap: () => setState(() => _heartActive = !_heartActive),
       onVerticalDragUpdate: (d) =>
           setState(() => _dragOffsetY += d.delta.dy),

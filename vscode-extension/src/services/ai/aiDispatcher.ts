@@ -26,8 +26,9 @@ export class AIRuntimeDispatcher implements AIRuntimeAdapter {
     decisions: Decision[],
     accepted: DecisionCard[],
     rejected: DecisionCard[],
+    existingCards: DecisionCard[] = [],
   ): Promise<DecisionCard | null> {
-    return this.dispatch().generateNextCard(project, decisions, accepted, rejected);
+    return this.dispatch().generateNextCard(project, decisions, accepted, rejected, existingCards);
   }
 
   async generateApp(project: Project, acceptedCards: DecisionCard[]): Promise<GeneratedApp> {
