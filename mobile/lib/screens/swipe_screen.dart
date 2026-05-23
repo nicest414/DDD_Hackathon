@@ -13,11 +13,13 @@ import 'finish_screen.dart';
 class SwipeScreen extends StatefulWidget {
   final Project project;
   final bool connectOnInit;
+  final String serverUrl;
 
   const SwipeScreen({
     super.key,
     required this.project,
     this.connectOnInit = true,
+    this.serverUrl = AppConfig.serverUrl,
   });
 
   @override
@@ -53,6 +55,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
           _waitingForCard = false;
           _sessionErrorMessage = null;
         });
+      } else if (event is WsCompleteEvent &&
+          event.projectId == widget.project.id) {
+        _finish();
       } else if (event is WsErrorEvent &&
           (event.projectId == null || event.projectId == widget.project.id)) {
         setState(() {
@@ -81,6 +86,8 @@ class _SwipeScreenState extends State<SwipeScreen> {
   }
 
   void _finish() {
+    if (_navigatingToFinish) return;
+
     // 送信待ちの決定を即時送信してからセッションを終了する
     for (final cardId in _pending.keys.toList()) {
       _pending[cardId]!.cancel();
@@ -93,9 +100,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
     _ws.sendFinish(widget.project.id);
 
     if (!mounted) return;
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const FinishScreen()),
-    );
+    Navigator.of(
+      context,
+    ).pushReplacement(MaterialPageRoute(builder: (_) => const FinishScreen()));
   }
 
   Future<void> _tryConnect() async {
@@ -103,14 +110,14 @@ class _SwipeScreenState extends State<SwipeScreen> {
       _waitingForCard = true;
       _connectionMessage = null;
     });
-    await _ws.connect(AppConfig.serverUrl);
+    await _ws.connect(widget.serverUrl);
     if (_ws.status == WsStatus.connected) {
       _ws.sendStartSession(widget.project);
     } else if (mounted) {
       setState(() {
         _waitingForCard = false;
         _connectionMessage =
-            'Could not connect to the VS Code extension at ${AppConfig.serverUrl}.';
+            'Could not connect to the VS Code extension at ${widget.serverUrl}.';
       });
     }
   }
@@ -230,7 +237,6 @@ class _SwipeScreenState extends State<SwipeScreen> {
                   }),
                 ),
               ),
-
             // Finish button
             Positioned(
               left: 20,
@@ -251,7 +257,6 @@ class _SwipeScreenState extends State<SwipeScreen> {
                 ),
               ),
             ),
-
           ],
         ),
       ),
@@ -461,7 +466,6 @@ class _CardStack extends StatelessWidget {
   }
 }
 
-
 class _SideActionBar extends StatelessWidget {
   final DecisionCard card;
   final bool heartActive;
@@ -475,10 +479,7 @@ class _SideActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _SideButton(
-      active: heartActive,
-      onTap: onHeartTap,
-    );
+    return _SideButton(active: heartActive, onTap: onHeartTap);
   }
 }
 
@@ -486,10 +487,7 @@ class _SideButton extends StatelessWidget {
   final bool active;
   final VoidCallback onTap;
 
-  const _SideButton({
-    required this.active,
-    required this.onTap,
-  });
+  const _SideButton({required this.active, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -502,7 +500,10 @@ class _SideButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: color.withAlpha(active ? 40 : 20),
           shape: BoxShape.circle,
-          border: Border.all(color: color.withAlpha(active ? 200 : 120), width: 1.5),
+          border: Border.all(
+            color: color.withAlpha(active ? 200 : 120),
+            width: 1.5,
+          ),
         ),
         child: Icon(Icons.favorite_rounded, color: color, size: 26),
       ),

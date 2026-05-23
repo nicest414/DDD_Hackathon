@@ -1,0 +1,42 @@
+[
+  {
+    "id": "d-1779529011025",
+    "projectId": "c4bab8dc-c8f2-40e9-b5eb-089e0a52cd01",
+    "cardId": "mock-1",
+    "action": "accepted",
+    "reason": "",
+    "createdAt": "2026-05-23T18:36:50.230"
+  },
+  {
+    "id": "d-1779529066330",
+    "projectId": "c4bab8dc-c8f2-40e9-b5eb-089e0a52cd01",
+    "cardId": "mock-2",
+    "action": "accepted",
+    "reason": "",
+    "createdAt": "2026-05-23T18:37:45.829"
+  },
+  {
+    "id": "d-1779529144628",
+    "projectId": "c4bab8dc-c8f2-40e9-b5eb-089e0a52cd01",
+    "cardId": "mock-3",
+    "action": "accepted",
+    "reason": "",
+    "createdAt": "2026-05-23T18:39:04.120"
+  },
+  {
+    "id": "d-1779529207331",
+    "projectId": "c4bab8dc-c8f2-40e9-b5eb-089e0a52cd01",
+    "cardId": "mock-4",
+    "action": "accepted",
+    "reason": "",
+    "createdAt": "2026-05-23T18:40:06.829"
+  },
+  {
+    "id": "d-1779529269044",
+    "projectId": "c4bab8dc-c8f2-40e9-b5eb-089e0a52cd01",
+    "cardId": "mock-5",
+    "action": "accepted",
+    "reason": "",
+    "createdAt": "2026-05-23T18:41:08.532"
+  }
+]

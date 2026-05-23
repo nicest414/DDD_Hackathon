@@ -130,6 +130,11 @@ export interface PREvent {
   status: PRStatus;
 }
 
+export interface CompleteEvent {
+  type: 'complete';
+  projectId: string;
+}
+
 export interface ErrorEvent {
   type: 'error';
   projectId?: string;
@@ -139,4 +144,4 @@ export interface ErrorEvent {
 }
 
 export type IncomingEvent = SwipeEvent | StartSessionEvent | FinishSessionEvent;
-export type OutgoingEvent = CardEvent | PreviewEvent | PREvent | ErrorEvent;
+export type OutgoingEvent = CardEvent | PreviewEvent | PREvent | CompleteEvent | ErrorEvent;
