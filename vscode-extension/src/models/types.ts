@@ -105,7 +105,7 @@ export interface StartSessionEvent {
 }
 
 export interface FinishSessionEvent {
-  type: 'finish';
+  type: 'finishSession';
   projectId: string;
 }
 

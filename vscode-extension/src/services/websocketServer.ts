@@ -174,8 +174,20 @@ export class DDDWebSocketServer {
       };
     }
 
+    if (event.type === 'finish') {
+      if (!this._isNonEmptyString(event.projectId)) {
+        return { error: this._invalidEvent('finish.projectId is required.') };
+      }
+      return {
+        event: {
+          type: 'finishSession',
+          projectId: event.projectId,
+        },
+      };
+    }
+
     return {
-      error: this._invalidEvent('event.type must be startSession or swipe.'),
+      error: this._invalidEvent('event.type must be startSession, swipe, or finish.'),
     };
   }
 
