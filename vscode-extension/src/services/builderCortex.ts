@@ -218,20 +218,10 @@ export class BuilderCortex {
   async handleStartSession(project: Project): Promise<void> {
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (workspaceRoot) {
-      const projectFolder = path.join(workspaceRoot, project.id);
-      let isRestoration: boolean;
-      try {
-        await fs.promises.access(projectFolder);
-        isRestoration = true;
-      } catch {
-        await fs.promises.mkdir(projectFolder, { recursive: true });
-        isRestoration = false;
-      }
-      this.output.appendLine(
-        isRestoration
-          ? `[DDD] Restoring session: ${project.title} (${project.id})`
-          : `[DDD] Created project folder: ${project.id}`,
-      );
+      const safeProjectId = this._safePathToken(project.id);
+      const projectFolder = path.join(workspaceRoot, safeProjectId);
+      await fs.promises.mkdir(projectFolder, { recursive: true });
+      this.output.appendLine(`[DDD] Ensured project folder: ${safeProjectId} (projectId=${project.id})`);
     }
 
     await this.registerProject(project);
@@ -342,5 +332,13 @@ export class BuilderCortex {
     if (fs.existsSync(path.join(directory, 'bun.lockb')) || fs.existsSync(path.join(directory, 'bun.lock'))) { return 'bun'; }
     if (fs.existsSync(path.join(directory, 'package-lock.json'))) { return 'npm'; }
     return undefined;
+  }
+
+  private _safePathToken(value: string): string {
+    const sanitized = value.replace(/[^A-Za-z0-9_-]/g, '-');
+    if (/[A-Za-z0-9_]/.test(sanitized)) {
+      return sanitized;
+    }
+    return 'project';
   }
 }
