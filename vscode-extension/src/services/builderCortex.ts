@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { Project, Decision, DecisionCard, GeneratedApp } from '../models/types';
 import { AIRuntimeAdapter, AIRuntimeAdapterError } from './ai/aiRuntime';
 import { DDDWebSocketServer } from './websocketServer';
@@ -126,11 +128,26 @@ export class BuilderCortex {
     return app;
   }
 
-  startPreview(): void {
-    const terminal = vscode.window.createTerminal('DDD Preview');
-    terminal.sendText('npm run dev');
+  startPreview(projectId: string): void {
+    const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspacePath) {
+      vscode.window.showWarningMessage('DDD: Open a workspace before opening preview.');
+      return;
+    }
+
+    const generatedAppPath = path.join(workspacePath, 'generated-app');
+    if (!fs.existsSync(path.join(generatedAppPath, 'package.json'))) {
+      vscode.window.showWarningMessage('DDD: Save locally before opening preview.');
+      return;
+    }
+
+    const terminal = vscode.window.createTerminal({
+      name: 'DDD Preview',
+      cwd: generatedAppPath,
+    });
+    terminal.sendText(this._previewCommand(generatedAppPath, workspacePath));
     terminal.show();
-    // TODO: detect Vite port and send PreviewEvent to mobile
+    this.ws.send({ type: 'preview', projectId, url: 'http://localhost:5173' });
   }
 
   async registerProject(project: Project): Promise<void> {
@@ -199,5 +216,39 @@ export class BuilderCortex {
 
   private _errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
+  }
+
+  private _previewCommand(generatedAppPath: string, workspacePath: string): string {
+    const packageManager = this._previewPackageManager(generatedAppPath, workspacePath);
+    switch (packageManager) {
+      case 'pnpm':
+        return 'pnpm install && pnpm dev';
+      case 'yarn':
+        return 'yarn install && yarn dev';
+      case 'bun':
+        return 'bun install && bun run dev';
+      case 'npm':
+      default:
+        return 'npm install && npm run dev';
+    }
+  }
+
+  private _previewPackageManager(generatedAppPath: string, workspacePath: string): 'npm' | 'pnpm' | 'yarn' | 'bun' {
+    const configured = vscode.workspace.getConfiguration('ddd.preview').get<string>('packageManager') ?? 'auto';
+    if (configured === 'npm' || configured === 'pnpm' || configured === 'yarn' || configured === 'bun') {
+      return configured;
+    }
+
+    return this._packageManagerFromLockfile(generatedAppPath)
+      ?? this._packageManagerFromLockfile(workspacePath)
+      ?? 'npm';
+  }
+
+  private _packageManagerFromLockfile(directory: string): 'npm' | 'pnpm' | 'yarn' | 'bun' | undefined {
+    if (fs.existsSync(path.join(directory, 'pnpm-lock.yaml'))) { return 'pnpm'; }
+    if (fs.existsSync(path.join(directory, 'yarn.lock'))) { return 'yarn'; }
+    if (fs.existsSync(path.join(directory, 'bun.lockb')) || fs.existsSync(path.join(directory, 'bun.lock'))) { return 'bun'; }
+    if (fs.existsSync(path.join(directory, 'package-lock.json'))) { return 'npm'; }
+    return undefined;
   }
 }
