@@ -27,11 +27,13 @@ void main() {
       body: Center(
         child: SizedBox(
           width: 360,
-          height: 420,
+          height: 700,
           child: ProposalCardWidget(
             card: card,
+            heartActive: false,
             onAdopt: () {},
-            onReject: () {},
+            onSkip: () {},
+            onPrevious: () {},
           ),
         ),
       ),
@@ -52,9 +54,7 @@ void main() {
     expect(find.text('軽さ'), findsOneWidget);
   });
 
-  testWidgets('long descriptions remain scrollable inside the card', (
-    tester,
-  ) async {
+  testWidgets('long descriptions do not overflow the card', (tester) async {
     final longDescription = List.filled(
       16,
       '長い説明文でもカード外へ押し出さず、本文領域だけで読めるようにします。',
@@ -62,7 +62,6 @@ void main() {
 
     await tester.pumpWidget(testBed(card(description: longDescription)));
 
-    expect(find.byType(SingleChildScrollView), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

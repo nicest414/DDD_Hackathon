@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'services/websocket_service.dart';
-import 'screens/home_screen.dart';
+import 'screens/root_screen.dart';
 
 void main() {
   runApp(const DDDApp());
@@ -34,7 +34,7 @@ class _DDDAppState extends State<DDDApp> {
         scaffoldBackgroundColor: const Color(0xFF0a0a0f),
         useMaterial3: true,
       ),
-      home: const HomeScreen(),
+      home: const RootScreen(),
     );
   }
 }

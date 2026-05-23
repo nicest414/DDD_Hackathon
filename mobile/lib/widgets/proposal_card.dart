@@ -3,14 +3,18 @@ import '../models/decision_card.dart';
 
 class ProposalCardWidget extends StatefulWidget {
   final DecisionCard card;
+  final bool heartActive;
   final VoidCallback onAdopt;
-  final VoidCallback onReject;
+  final VoidCallback onSkip;
+  final VoidCallback onPrevious;
 
   const ProposalCardWidget({
     super.key,
     required this.card,
+    required this.heartActive,
     required this.onAdopt,
-    required this.onReject,
+    required this.onSkip,
+    required this.onPrevious,
   });
 
   @override
@@ -18,50 +22,67 @@ class ProposalCardWidget extends StatefulWidget {
 }
 
 class _ProposalCardWidgetState extends State<ProposalCardWidget> {
-  double _dragX = 0;
+  double _dragY = 0;
   static const _threshold = 100.0;
 
   void _onDragUpdate(DragUpdateDetails d) =>
-      setState(() => _dragX += d.delta.dx);
+      setState(() => _dragY += d.delta.dy);
 
   void _onDragEnd(DragEndDetails _) {
-    if (_dragX > _threshold) {
-      widget.onAdopt();
-    } else if (_dragX < -_threshold) {
-      widget.onReject();
+    if (_dragY < -_threshold) {
+      if (widget.heartActive) {
+        widget.onAdopt();
+      } else {
+        widget.onSkip();
+      }
+    } else if (_dragY > _threshold) {
+      widget.onPrevious();
     } else {
-      setState(() => _dragX = 0);
+      setState(() => _dragY = 0);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final ratio = (_dragX.abs() / _threshold).clamp(0.0, 1.0);
-    final isRight = _dragX > 0;
+    final ratio = (_dragY.abs() / _threshold).clamp(0.0, 1.0);
+    final isUp = _dragY < 0;
+
+    final Color stampColor;
+    final String stampLabel;
+    if (isUp) {
+      stampColor = widget.heartActive
+          ? const Color(0xFF22c55e)
+          : const Color(0xFFef4444);
+      stampLabel = widget.heartActive
+          ? widget.card.acceptLabel
+          : widget.card.rejectLabel;
+    } else {
+      stampColor = const Color(0xFF64748b);
+      stampLabel = '戻る';
+    }
 
     return GestureDetector(
-      onHorizontalDragUpdate: _onDragUpdate,
-      onHorizontalDragEnd: _onDragEnd,
+      onVerticalDragUpdate: _onDragUpdate,
+      onVerticalDragEnd: _onDragEnd,
       child: Transform(
-        transform: Matrix4.translationValues(_dragX, 0, 0)
-          ..rotateZ(_dragX * 0.003),
-        alignment: Alignment.bottomCenter,
+        transform: Matrix4.translationValues(0, _dragY, 0),
+        alignment: Alignment.center,
         child: Stack(
+          fit: StackFit.expand,
           children: [
             _CardBody(card: widget.card),
             if (ratio > 0.15)
               Positioned(
-                top: 28,
-                right: isRight ? null : 24,
-                left: isRight ? 24 : null,
-                child: _Stamp(
-                  label: isRight
-                      ? widget.card.acceptLabel
-                      : widget.card.rejectLabel,
-                  color: isRight
-                      ? const Color(0xFF22c55e)
-                      : const Color(0xFFef4444),
-                  opacity: ratio,
+                top: isUp ? 60 : null,
+                bottom: isUp ? null : 60,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: _Stamp(
+                    label: stampLabel,
+                    color: stampColor,
+                    opacity: ratio,
+                  ),
                 ),
               ),
           ],
@@ -80,15 +101,15 @@ class _CardBody extends StatelessWidget {
     final colors = _typeColors(card.type);
 
     return Container(
-      width: double.infinity,
       decoration: BoxDecoration(
         color: const Color(0xFF1a1a2e),
         border: Border.all(color: colors.accent.withAlpha(130), width: 1.5),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
       ),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 110),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.max,
         children: [
           Row(
             children: [
@@ -121,41 +142,39 @@ class _CardBody extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             card.hook,
-            maxLines: 3,
+            maxLines: 4,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
-              fontSize: 22,
+              fontSize: 26,
               fontWeight: FontWeight.w800,
-              height: 1.3,
+              height: 1.25,
             ),
           ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Text(
-                card.description,
-                style: const TextStyle(
-                  fontSize: 15,
-                  color: Color(0xFF94a3b8),
-                  height: 1.65,
-                ),
-              ),
+          const Spacer(),
+          Text(
+            card.description,
+            maxLines: 5,
+            overflow: TextOverflow.fade,
+            style: const TextStyle(
+              fontSize: 14,
+              color: Color(0xFF94a3b8),
+              height: 1.6,
             ),
           ),
           const SizedBox(height: 12),
           _ScoreStrip(card: card, accent: colors.accent),
-          const SizedBox(height: 12),
           if (card.payoff.isNotEmpty || card.predictedReward.isNotEmpty) ...[
+            const SizedBox(height: 12),
             Container(
               decoration: BoxDecoration(
                 color: Colors.white.withAlpha(10),
                 border: Border.all(color: colors.accent.withAlpha(70)),
                 borderRadius: BorderRadius.circular(12),
               ),
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text(
                     '採用したら',
@@ -165,8 +184,8 @@ class _CardBody extends StatelessWidget {
                       color: Color(0xFF64748b),
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  if (card.predictedReward.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  if (card.predictedReward.isNotEmpty)
                     Text(
                       card.predictedReward,
                       maxLines: 2,
@@ -177,12 +196,11 @@ class _CardBody extends StatelessWidget {
                         height: 1.5,
                       ),
                     ),
-                  ],
                   if (card.payoff.isNotEmpty) ...[
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Text(
                       card.payoff,
-                      maxLines: 3,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 13,
@@ -378,7 +396,7 @@ class _Stamp extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: color,
-            fontSize: 24,
+            fontSize: 28,
             fontWeight: FontWeight.w900,
           ),
         ),

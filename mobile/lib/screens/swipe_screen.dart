@@ -29,7 +29,11 @@ class _SwipeScreenState extends State<SwipeScreen> {
   final _cards = <DecisionCard>[];
   int _currentIndex = 0;
   bool _animating = false;
+  final _likedCardIds = <String>{};
   bool _waitingForCard = true;
+
+  bool get _heartActive =>
+      _currentCard != null && _likedCardIds.contains(_currentCard!.id);
   String? _connectionMessage;
   String? _sessionErrorMessage;
   StreamSubscription<WsIncomingEvent>? _wsSub;
@@ -111,6 +115,14 @@ class _SwipeScreenState extends State<SwipeScreen> {
     });
   }
 
+  void _goBack() {
+    if (_animating || _currentIndex <= 0) return;
+    setState(() {
+      _currentIndex--;
+      if (_decisions.isNotEmpty) _decisions.removeLast();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final total = _cards.length;
@@ -119,51 +131,66 @@ class _SwipeScreenState extends State<SwipeScreen> {
     final currentCard = _currentCard;
 
     return Scaffold(
+      backgroundColor: const Color(0xFF0f0f1a),
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            ValueListenableBuilder<WsStatus>(
-              valueListenable: _ws.statusNotifier,
-              builder: (context, wsStatus, child) => _Header(
-                projectTitle: widget.project.title,
-                current: total > 0 ? displayIndex + 1 : 0,
-                total: total,
-                progress: progress,
-                wsStatus: wsStatus,
-              ),
+            // Card area fills everything below the header
+            Column(
+              children: [
+                ValueListenableBuilder<WsStatus>(
+                  valueListenable: _ws.statusNotifier,
+                  builder: (context, wsStatus, child) => _Header(
+                    projectTitle: widget.project.title,
+                    current: total > 0 ? displayIndex + 1 : 0,
+                    total: total,
+                    progress: progress,
+                    wsStatus: wsStatus,
+                  ),
+                ),
+                Expanded(
+                  child: _CardStack(
+                    cards: _cards,
+                    currentIndex: _currentIndex,
+                    heartActive: _heartActive,
+                    onAdopt: () => _decide('accepted'),
+                    onSkip: () => _decide('rejected'),
+                    onPrevious: _goBack,
+                  ),
+                ),
+              ],
             ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _CardStack(
-                      cards: _cards,
-                      currentIndex: _currentIndex,
-                      onAdopt: () => _decide('accepted'),
-                      onReject: () => _decide('rejected'),
-                    ),
-                    if (currentCard == null)
-                      Expanded(
-                        child: _CardWaitState(
-                          waitingForCard: _waitingForCard,
-                          connectionMessage: _connectionMessage,
-                          sessionErrorMessage: _sessionErrorMessage,
-                          onRetry: widget.connectOnInit ? _tryConnect : null,
-                        ),
-                      ),
-                    const SizedBox(height: 20),
-                    _SwipeHints(card: currentCard),
-                  ],
+
+            // Wait / error overlay
+            if (currentCard == null)
+              Positioned.fill(
+                child: _CardWaitState(
+                  waitingForCard: _waitingForCard,
+                  connectionMessage: _connectionMessage,
+                  sessionErrorMessage: _sessionErrorMessage,
+                  onRetry: widget.connectOnInit ? _tryConnect : null,
                 ),
               ),
-            ),
-            _ActionButtons(
-              card: currentCard,
-              onReject: () => _decide('rejected'),
-              onAdopt: () => _decide('accepted'),
-            ),
+
+            // TikTok-style right action bar
+            if (currentCard != null)
+              Positioned(
+                right: 16,
+                bottom: 96,
+                child: _SideActionBar(
+                  card: currentCard,
+                  heartActive: _heartActive,
+                  onHeartTap: () => setState(() {
+                    final id = currentCard.id;
+                    if (_likedCardIds.contains(id)) {
+                      _likedCardIds.remove(id);
+                    } else {
+                      _likedCardIds.add(id);
+                    }
+                  }),
+                ),
+              ),
+
           ],
         ),
       ),
@@ -312,236 +339,111 @@ class _WsStatusDot extends StatelessWidget {
 class _CardStack extends StatelessWidget {
   final List<DecisionCard> cards;
   final int currentIndex;
+  final bool heartActive;
   final VoidCallback onAdopt;
-  final VoidCallback onReject;
+  final VoidCallback onSkip;
+  final VoidCallback onPrevious;
 
   const _CardStack({
     required this.cards,
     required this.currentIndex,
+    required this.heartActive,
     required this.onAdopt,
-    required this.onReject,
+    required this.onSkip,
+    required this.onPrevious,
   });
 
   @override
   Widget build(BuildContext context) {
-    final visible = cards.skip(currentIndex).take(3).toList();
+    final visible = cards.skip(currentIndex).take(2).toList();
     if (visible.isEmpty) return const SizedBox.shrink();
 
-    return SizedBox(
-      height: 420,
-      child: Stack(
-        alignment: Alignment.topCenter,
-        children: [
-          for (int i = visible.length - 1; i >= 0; i--)
-            Positioned(
-              top: i == 0
-                  ? 0
-                  : i == 1
-                  ? 6.0
-                  : 12.0,
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Transform.scale(
-                scale: i == 0
-                    ? 1.0
-                    : i == 1
-                    ? 0.97
-                    : 0.94,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final height = constraints.maxHeight;
+        return Stack(
+          children: [
+            if (visible.length > 1)
+              Positioned(
+                left: 6,
+                right: 6,
+                top: height - 64,
+                height: height,
                 child: Opacity(
-                  opacity: i == 0
-                      ? 1.0
-                      : i == 1
-                      ? 0.75
-                      : 0.5,
-                  child: i == 0
-                      ? ProposalCardWidget(
-                          card: visible[i],
-                          onAdopt: onAdopt,
-                          onReject: onReject,
-                        )
-                      : IgnorePointer(
-                          child: ProposalCardWidget(
-                            card: visible[i],
-                            onAdopt: () {},
-                            onReject: () {},
-                          ),
-                        ),
+                  opacity: 0.4,
+                  child: IgnorePointer(
+                    child: ProposalCardWidget(
+                      key: ValueKey('next_${visible[1].id}'),
+                      card: visible[1],
+                      heartActive: false,
+                      onAdopt: () {},
+                      onSkip: () {},
+                      onPrevious: () {},
+                    ),
+                  ),
                 ),
               ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SwipeHints extends StatelessWidget {
-  final DecisionCard? card;
-  const _SwipeHints({required this.card});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Flexible(
-          child: _Hint(
-            label: card?.rejectLabel ?? '却下',
-            icon: '✕',
-            color: const Color(0xFFef4444),
-          ),
-        ),
-        Flexible(
-          child: _Hint(
-            label: card?.acceptLabel ?? '採用',
-            icon: '✓',
-            color: const Color(0xFF22c55e),
-            reverse: true,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _Hint extends StatelessWidget {
-  final String label;
-  final String icon;
-  final Color color;
-  final bool reverse;
-  const _Hint({
-    required this.label,
-    required this.icon,
-    required this.color,
-    this.reverse = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final children = [
-      Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: color.withAlpha(40),
-          shape: BoxShape.circle,
-        ),
-        child: Center(
-          child: Text(icon, style: TextStyle(color: color, fontSize: 16)),
-        ),
-      ),
-      const SizedBox(width: 6),
-      Flexible(
-        child: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: color,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-    ];
-    return Opacity(
-      opacity: 0.5,
-      child: Row(children: reverse ? children.reversed.toList() : children),
-    );
-  }
-}
-
-class _ActionButtons extends StatelessWidget {
-  final DecisionCard? card;
-  final VoidCallback onReject;
-  final VoidCallback onAdopt;
-  const _ActionButtons({
-    required this.card,
-    required this.onReject,
-    required this.onAdopt,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Expanded(
-            child: _ChoiceButton(
-              icon: '✕',
-              label: card?.rejectLabel ?? '却下',
-              color: const Color(0xFFef4444),
-              onTap: onReject,
-              size: 64,
-            ),
-          ),
-          const SizedBox(width: 24),
-          Expanded(
-            child: _ChoiceButton(
-              icon: '✓',
-              label: card?.acceptLabel ?? '採用',
-              color: const Color(0xFF22c55e),
-              onTap: onAdopt,
-              size: 64,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ChoiceButton extends StatelessWidget {
-  final String icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-  final double size;
-  const _ChoiceButton({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.onTap,
-    required this.size,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: size,
-            height: size,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: color, width: 2),
-            ),
-            child: Center(
-              child: Text(
-                icon,
-                style: TextStyle(color: color, fontSize: size * 0.38),
+            Positioned.fill(
+              child: ProposalCardWidget(
+                key: ValueKey(visible[0].id),
+                card: visible[0],
+                heartActive: heartActive,
+                onAdopt: onAdopt,
+                onSkip: onSkip,
+                onPrevious: onPrevious,
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: color,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+
+class _SideActionBar extends StatelessWidget {
+  final DecisionCard card;
+  final bool heartActive;
+  final VoidCallback onHeartTap;
+
+  const _SideActionBar({
+    required this.card,
+    required this.heartActive,
+    required this.onHeartTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _SideButton(
+      active: heartActive,
+      onTap: onHeartTap,
+    );
+  }
+}
+
+class _SideButton extends StatelessWidget {
+  final bool active;
+  final VoidCallback onTap;
+
+  const _SideButton({
+    required this.active,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = active ? const Color(0xFFef4444) : Colors.white;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 56,
+        height: 56,
+        decoration: BoxDecoration(
+          color: color.withAlpha(active ? 40 : 20),
+          shape: BoxShape.circle,
+          border: Border.all(color: color.withAlpha(active ? 200 : 120), width: 1.5),
+        ),
+        child: Icon(Icons.favorite_rounded, color: color, size: 26),
       ),
     );
   }
