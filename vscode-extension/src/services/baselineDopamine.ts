@@ -1,5 +1,5 @@
 import { DecisionCard, Decision, GeneratedApp, Project } from '../models/types';
-import { AIRuntimeAdapter } from './aiRuntime';
+import { AIRuntimeAdapter } from './ai/aiRuntime';
 
 type BaselineCard = Omit<DecisionCard, 'projectId' | 'status'>;
 
