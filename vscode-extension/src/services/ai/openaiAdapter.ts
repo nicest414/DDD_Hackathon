@@ -36,10 +36,11 @@ export class OpenAICompatibleAdapter extends BaseAIAdapter {
   }
 
   protected parseJson(text: string): Record<string, unknown> {
+    const json = text.trim();
     try {
-      return JSON.parse(text) as Record<string, unknown>;
+      return JSON.parse(json) as Record<string, unknown>;
     } catch {
-      throw new AIRuntimeAdapterError(`Invalid JSON from AI: ${text}`);
+      throw new AIRuntimeAdapterError(`Invalid JSON from AI: ${json.slice(0, 200)}`);
     }
   }
 }

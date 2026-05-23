@@ -20,6 +20,10 @@
         "title": "DDD: Configure AI Runtime"
       },
       {
+        "command": "ddd.testAIConnection",
+        "title": "DDD: Test AI Connection"
+      },
+      {
         "command": "ddd.startSession",
         "title": "DDD: Start Session"
       },
