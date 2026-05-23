@@ -76,25 +76,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       const repoPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       if (repoPath) {
+        const publisher = new GitHubPublisher();
         try {
           const decisions = await store!.getDecisions(projectId);
-          const projectDir = path.join(repoPath, projectId);
-          await fs.promises.mkdir(projectDir, { recursive: true });
-          await fs.promises.writeFile(path.join(projectDir, 'ddd-spec.json'), JSON.stringify(app.spec, null, 2));
-          await fs.promises.writeFile(path.join(projectDir, 'ddd-decisions.json'), JSON.stringify(decisions, null, 2));
+          await publisher.saveLocal(app, decisions, repoPath);
+          output.appendLine('[DDD] finish: generated-app saved locally');
+          ws.send({
+            type: 'pr',
+            projectId,
+            repositoryUrl: '',
+            branchName: `ddd/${safePathToken(projectId)}`,
+            url: '',
+            status: 'localSaved',
+          });
         } catch (err) {
-          output.appendLine(`[DDD] finish: failed to write spec files: ${err instanceof Error ? err.message : String(err)}`);
+          output.appendLine(`[DDD] finish: failed to save generated app: ${err instanceof Error ? err.message : String(err)}`);
+          ws.send({
+            type: 'error',
+            projectId,
+            code: 'UNKNOWN_ERROR',
+            message: 'Failed to save generated app locally.',
+            recoverable: false,
+          });
         }
       }
-
-      ws.send({
-        type: 'pr',
-        projectId,
-        repositoryUrl: '',
-        branchName: `ddd/${projectId}`,
-        url: '',
-        status: 'localSaved',
-      });
     }
   };
 
