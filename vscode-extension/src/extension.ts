@@ -81,19 +81,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           const decisions = await store!.getDecisions(projectId);
           await publisher.saveLocal(app, decisions, repoPath);
           output.appendLine('[DDD] finish: generated-app saved locally');
+          ws.send({
+            type: 'pr',
+            projectId,
+            repositoryUrl: '',
+            branchName: `ddd/${safePathToken(projectId)}`,
+            url: '',
+            status: 'localSaved',
+          });
         } catch (err) {
           output.appendLine(`[DDD] finish: failed to save generated app: ${err instanceof Error ? err.message : String(err)}`);
+          ws.send({
+            type: 'error',
+            projectId,
+            code: 'UNKNOWN_ERROR',
+            message: 'Failed to save generated app locally.',
+            recoverable: false,
+          });
         }
       }
-
-      ws.send({
-        type: 'pr',
-        projectId,
-        repositoryUrl: '',
-        branchName: `ddd/${safePathToken(projectId)}`,
-        url: '',
-        status: 'localSaved',
-      });
     }
   };
 
