@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { DDDWebSocketServer } from './services/websocketServer';
-import { AIRuntimeDispatcher } from './services/aiDispatcher';
+import { AIRuntimeDispatcher } from './services/ai/aiDispatcher';
 import { BaselineDopamine } from './services/baselineDopamine';
 import { BuilderCortex } from './services/builderCortex';
 import { DecisionStore } from './services/decisionStore';

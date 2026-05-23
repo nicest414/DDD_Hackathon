@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { DecisionCard, Decision, GeneratedApp, Project } from '../models/types';
+import { DecisionCard, Decision, GeneratedApp, Project } from '../../models/types';
 import { AIRuntimeAdapter, AIRuntimeProvider } from './aiRuntime';
-import { BaselineDopamine } from './baselineDopamine';
+import { BaselineDopamine } from '../baselineDopamine';
 import { OpenAICompatibleAdapter } from './openaiAdapter';
 import { CodexCLIAdapter } from './codexAdapter';
 import { ClaudeCodeAdapter } from './claudeCodeAdapter';

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { Project, Decision, DecisionCard, GeneratedApp } from '../models/types';
-import { AIRuntimeAdapter, AIRuntimeAdapterError } from './aiRuntime';
+import { AIRuntimeAdapter, AIRuntimeAdapterError } from './ai/aiRuntime';
 import { DDDWebSocketServer } from './websocketServer';
 import { DecisionStore } from './decisionStore';
 
@@ -131,6 +131,10 @@ export class BuilderCortex {
     terminal.sendText('npm run dev');
     terminal.show();
     // TODO: detect Vite port and send PreviewEvent to mobile
+  }
+
+  getProject(projectId: string): Project | undefined {
+    return this.projects.get(projectId);
   }
 
   async registerProject(project: Project): Promise<void> {

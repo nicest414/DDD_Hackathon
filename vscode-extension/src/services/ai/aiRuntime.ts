@@ -1,4 +1,4 @@
-import { DecisionCard, Decision, GeneratedApp, Project } from '../models/types';
+import { DecisionCard, Decision, GeneratedApp, Project } from '../../models/types';
 
 export type AIRuntimeProvider = 'openai-compatible' | 'codex-cli' | 'claude-code' | 'baseline';
 
