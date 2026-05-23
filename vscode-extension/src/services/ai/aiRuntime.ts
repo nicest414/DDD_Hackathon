@@ -42,35 +42,46 @@ export class AIRuntimeConnectionError extends AIRuntimeAdapterError {
   }
 }
 
+function maskSensitiveError(value: string | undefined): string | undefined {
+  if (!value) { return value; }
+  return value
+    .replace(/(api[_-]?key["'\s:=]+)([^"'\s,]+)/gi, '$1[REDACTED]')
+    .replace(/(authorization["'\s:=]+bearer\s+)([^"'\s,]+)/gi, '$1[REDACTED]')
+    .replace(/\b(sk-[A-Za-z0-9_-]{8,})\b/g, '[REDACTED]')
+    .replace(/\b(xox[baprs]-[A-Za-z0-9-]{8,})\b/g, '[REDACTED]')
+    .replace(/\b(gh[pousr]_[A-Za-z0-9_]{8,})\b/g, '[REDACTED]');
+}
+
 export function classifyAIRuntimeError(err: unknown): AIRuntimeConnectionError {
   if (err instanceof AIRuntimeConnectionError) {
-    return err;
+    return new AIRuntimeConnectionError(err.kind, err.message, maskSensitiveError(err.detail));
   }
 
   const error = err as { status?: number; code?: string; message?: string; name?: string };
   const message = error?.message ?? String(err);
   const normalized = message.toLowerCase();
+  const detail = maskSensitiveError(message);
 
   if (error?.status === 401 || error?.status === 403 || normalized.includes('unauthorized') || normalized.includes('api key')) {
-    return new AIRuntimeConnectionError('authentication', 'AI authentication failed. Check your API key or CLI login state.', message);
+    return new AIRuntimeConnectionError('authentication', 'AI authentication failed. Check your API key or CLI login state.', detail);
   }
   if (error?.code === 'ETIMEDOUT' || error?.code === 'ABORT_ERR' || normalized.includes('timeout') || normalized.includes('timed out')) {
-    return new AIRuntimeConnectionError('timeout', 'AI connection timed out. Check the network, provider status, or timeout setting.', message);
+    return new AIRuntimeConnectionError('timeout', 'AI connection timed out. Check the network, provider status, or timeout setting.', detail);
   }
   if (normalized.includes('invalid json') || normalized.includes('no json') || normalized.includes('incomplete json') || normalized.includes('missing required field')) {
-    return new AIRuntimeConnectionError('invalid-response', 'AI responded, but the response format was invalid.', message);
+    return new AIRuntimeConnectionError('invalid-response', 'AI responded, but the response format was invalid.', detail);
   }
   if (normalized.includes('enoent') || normalized.includes('command not found') || normalized.includes('not found')) {
-    return new AIRuntimeConnectionError('configuration', 'AI runtime command was not found. Check the provider installation and PATH.', message);
+    return new AIRuntimeConnectionError('configuration', 'AI runtime command was not found. Check the provider installation and PATH.', detail);
   }
   if (error?.status && error.status >= 500) {
-    return new AIRuntimeConnectionError('unavailable', 'AI provider is currently unavailable.', message);
+    return new AIRuntimeConnectionError('unavailable', 'AI provider is currently unavailable.', detail);
   }
   if (error?.status && error.status >= 400) {
-    return new AIRuntimeConnectionError('configuration', 'AI provider rejected the request. Check the model, base URL, and provider settings.', message);
+    return new AIRuntimeConnectionError('configuration', 'AI provider rejected the request. Check the model, base URL, and provider settings.', detail);
   }
 
-  return new AIRuntimeConnectionError('unknown', 'AI connection test failed.', message);
+  return new AIRuntimeConnectionError('unknown', 'AI connection test failed.', detail);
 }
 
 export function extractFirstJsonObject(text: string, source: string): string {
@@ -128,7 +139,7 @@ export abstract class BaseAIAdapter implements AIRuntimeAdapter {
         throw new AIRuntimeConnectionError(
           'invalid-response',
           'AI responded, but the response did not confirm connectivity.',
-          JSON.stringify(parsed).slice(0, 200),
+          maskSensitiveError(JSON.stringify(parsed).slice(0, 200)),
         );
       }
       return {
@@ -138,6 +149,7 @@ export abstract class BaseAIAdapter implements AIRuntimeAdapter {
       };
     } catch (err) {
       const classified = classifyAIRuntimeError(err);
+      // Detail is masked in classifyAIRuntimeError for every error kind before it reaches UI/log callers.
       return {
         ok: false,
         provider,
