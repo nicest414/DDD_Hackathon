@@ -17,9 +17,12 @@ export interface PublishResult {
 
 export class GitHubPublisher {
   async saveLocal(app: GeneratedApp, decisions: Decision[], repoPath: string): Promise<PublishResult> {
-    const specPath = path.join(repoPath, 'ddd-spec.json');
-    const decisionsPath = path.join(repoPath, 'ddd-decisions.json');
+    const safeProjectId = this._safeToken(app.projectId);
+    const projectDir = path.join(repoPath, safeProjectId);
+    const specPath = path.join(projectDir, 'ddd-spec.json');
+    const decisionsPath = path.join(projectDir, 'ddd-decisions.json');
 
+    await fs.mkdir(projectDir, { recursive: true });
     await fs.writeFile(specPath, JSON.stringify(app.spec, null, 2));
     await fs.writeFile(decisionsPath, JSON.stringify(decisions, null, 2));
     await this._writeGeneratedApp(app, decisions, path.join(repoPath, 'generated-app'));
