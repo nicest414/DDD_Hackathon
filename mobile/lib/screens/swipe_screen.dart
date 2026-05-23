@@ -60,11 +60,13 @@ class _SwipeScreenState extends State<SwipeScreen> {
       if (event is WsCardEvent && event.card.projectId == widget.project.id) {
         _loadingVideoTimer?.cancel();
         _loadingVideoTimer = null;
+        final wasWaiting = _waitingForCard;
         setState(() {
           _cards.add(event.card);
           _waitingForCard = false;
           _sessionErrorMessage = null;
         });
+        if (wasWaiting && !_showVideo) _audio.playRandom();
       } else if (event is WsErrorEvent &&
           (event.projectId == null || event.projectId == widget.project.id)) {
         setState(() {
@@ -136,7 +138,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
 
   void _decide(String action) {
     if (_animating || _currentCard == null) return;
-    _audio.playRandom();
+    _audio.stop();
     setState(() => _animating = true);
 
     final card = _currentCard!;
@@ -165,6 +167,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
         _scheduleLoadingVideo();
       } else {
         _maybeShowVideo();
+        if (!_showVideo) _audio.playRandom();
       }
     });
   }
@@ -184,7 +187,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
   }
 
   void _maybeShowVideo() {
-    if (_random.nextInt(5) == 0) return;
+    if (_random.nextInt(5) != 0) return;
     final path = _video.pickRandom();
     if (path == null) return;
     setState(() {
@@ -195,7 +198,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
 
   void _goBack() {
     if (_animating || _currentIndex <= 0) return;
-    _audio.playRandom();
+    if (!_showVideo) _audio.playRandom();
 
     // 戻るカードの送信待ちタイマーをキャンセルして重複送信を防ぐ
     final prevCard = _cards[_currentIndex - 1];
@@ -284,10 +287,13 @@ class _SwipeScreenState extends State<SwipeScreen> {
                 child: VideoOverlay(
                   key: ValueKey(_videoPath),
                   assetPath: _videoPath!,
-                  onFinished: () => setState(() {
-                    _showVideo = false;
-                    _videoPath = null;
-                  }),
+                  onFinished: () {
+                    setState(() {
+                      _showVideo = false;
+                      _videoPath = null;
+                    });
+                    _audio.playRandom();
+                  },
                   onSwiped: () {
                     if (_waitingForCard) {
                       final next = _video.pickRandom(exclude: _videoPath);
@@ -297,6 +303,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
                         _showVideo = false;
                         _videoPath = null;
                       });
+                      _audio.playRandom();
                     }
                   },
                 ),
