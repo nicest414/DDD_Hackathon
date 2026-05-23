@@ -8,6 +8,7 @@ import { BaselineDopamine } from './services/baselineDopamine';
 import { BuilderCortex } from './services/builderCortex';
 import { DecisionStore } from './services/decisionStore';
 import { GitHubPublisher } from './services/githubPublisher';
+import { safePathToken } from './services/pathUtils';
 import { SwipeEvent, StartSessionEvent } from './models/types';
 
 let server: DDDWebSocketServer | null = null;
@@ -152,7 +153,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (repoPath) {
         try {
           const decisions = await store!.getDecisions(currentProjectId);
-          const projectDir = path.join(repoPath, currentProjectId);
+          const projectDir = path.join(repoPath, safePathToken(currentProjectId));
           await fs.promises.mkdir(projectDir, { recursive: true });
           await fs.promises.writeFile(path.join(projectDir, 'ddd-spec.json'), JSON.stringify(app.spec, null, 2));
           await fs.promises.writeFile(path.join(projectDir, 'ddd-decisions.json'), JSON.stringify(decisions, null, 2));
@@ -171,7 +172,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showWarningMessage('DDD: No active project. Start a session first.');
         return;
       }
-      cortex!.startPreview();
+      cortex!.startPreview(currentProjectId);
     }),
 
     vscode.commands.registerCommand('ddd.publishToGitHub', async () => {
@@ -197,51 +198,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       let result;
       try {
-        result = await publisher.publish(app, decisions, repoPath);
+        result = await publisher.saveLocal(app, decisions, repoPath);
       } catch (err) {
-        output.appendLine(`[DDD] Publish failed before local files were saved: ${err instanceof Error ? err.message : String(err)}`);
+        output.appendLine(`[DDD] Local save failed: ${err instanceof Error ? err.message : String(err)}`);
         ws.send({
           type: 'error',
           projectId,
-          code: 'GITHUB_UNAVAILABLE',
-          message: 'DDD: GitHub publish failed before local files were saved.',
+          code: 'UNKNOWN_ERROR',
+          message: 'DDD: Local save failed.',
           recoverable: true,
         });
-        vscode.window.showErrorMessage('DDD: GitHub publish failed before local files were saved.');
+        vscode.window.showErrorMessage('DDD: Local save failed.');
         return;
       }
 
-      if (result.pullRequestUrl) {
-        ws.send({
-          type: 'pr',
-          projectId,
-          repositoryUrl: result.repositoryUrl,
-          branchName: result.branchName,
-          url: result.pullRequestUrl,
-          status: 'created',
-        });
-        vscode.window.showInformationMessage(`DDD: PR created → ${result.pullRequestUrl}`);
-      } else if (result.repositoryUrl) {
-        const message = `DDD: PR creation failed after pushing to ${result.repositoryUrl}.`;
-        ws.send({
-          type: 'error',
-          projectId,
-          code: 'GITHUB_UNAVAILABLE',
-          message,
-          recoverable: true,
-        });
-        vscode.window.showErrorMessage(message);
-      } else {
-        ws.send({
-          type: 'pr',
-          projectId,
-          repositoryUrl: '',
-          branchName: result.branchName,
-          url: '',
-          status: 'localSaved',
-        });
-        vscode.window.showWarningMessage('DDD: GitHub push failed. Local files saved.');
-      }
+      ws.send({
+        type: 'pr',
+        projectId,
+        repositoryUrl: result.repositoryUrl,
+        branchName: result.branchName,
+        url: result.pullRequestUrl,
+        status: 'localSaved',
+      });
+      vscode.window.showInformationMessage('DDD: ddd-spec.json / ddd-decisions.json をローカル保存しました');
     }),
   );
 
