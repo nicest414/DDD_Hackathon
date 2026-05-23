@@ -24,7 +24,7 @@ class SettingsScreen extends StatelessWidget {
                   _Step(num: '1', text: 'ホームでアプリのアイデアを入力する'),
                   _Step(num: '2', text: 'VS Code拡張が起動していることを確認する'),
                   _Step(num: '3', text: 'AIが提案したカードをスワイプして判断する'),
-                  _Step(num: '4', text: '採用カードがコードとしてGitHubにPRされる'),
+                  _Step(num: '4', text: '採用カードの結果をローカルに保存する'),
                 ],
               ),
               const SizedBox(height: 16),

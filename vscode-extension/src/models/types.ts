@@ -104,6 +104,11 @@ export interface StartSessionEvent {
   project: Project;
 }
 
+export interface FinishSessionEvent {
+  type: 'finishSession';
+  projectId: string;
+}
+
 export interface CardEvent {
   type: 'card';
   card: DecisionCard;
@@ -113,6 +118,7 @@ export interface PreviewEvent {
   type: 'preview';
   projectId: string;
   url: string;
+  status: 'starting' | 'ready';
 }
 
 export interface PREvent {
@@ -132,5 +138,5 @@ export interface ErrorEvent {
   recoverable: boolean;
 }
 
-export type IncomingEvent = SwipeEvent | StartSessionEvent;
+export type IncomingEvent = SwipeEvent | StartSessionEvent | FinishSessionEvent;
 export type OutgoingEvent = CardEvent | PreviewEvent | PREvent | ErrorEvent;
