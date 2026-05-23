@@ -16,6 +16,7 @@ export class BuilderCortex {
   private decisions = new Map<string, Decision[]>(); // keyed by projectId
   private cards = new Map<string, DecisionCard[]>();
   private cardGenerationQueues = new Map<string, Promise<DecisionCard[]>>();
+  private sentCardIds = new Map<string, Set<string>>();
 
   constructor(
     private readonly ws: DDDWebSocketServer,
@@ -260,14 +261,11 @@ export class BuilderCortex {
 
   async startProject(project: Project): Promise<void> {
     this.output.appendLine(`[DDD] Generating first cards for: ${project.title}`);
-    const pendingCards = this._pendingCards(project.id).slice(0, CARD_BATCH_SIZE);
-    pendingCards.forEach((card) => this.ws.send({ type: 'card', card }));
-
+    this.sentCardIds.set(project.id, new Set<string>());
     const firstCards = await this._topUpCards(project.id);
     firstCards.forEach((card) => this.ws.send({ type: 'card', card }));
-    const sentCards = [...pendingCards, ...firstCards];
-    if (sentCards.length > 0) {
-      this.output.appendLine(`[DDD] First cards sent: ${sentCards.map((card) => card.title).join(', ')}`);
+    if (firstCards.length > 0) {
+      this.output.appendLine(`[DDD] First cards sent: ${firstCards.map((card) => card.title).join(', ')}`);
     }
   }
 
@@ -288,9 +286,18 @@ export class BuilderCortex {
   }
 
   private async _generateCardsToFill(projectId: string, targetPendingCount: number): Promise<DecisionCard[]> {
-    const missing = Math.max(0, targetPendingCount - this._pendingCards(projectId).length);
-    if (missing === 0) { return []; }
-    return this._nextCards(projectId, missing);
+    const pendingCards = this._pendingCards(projectId);
+    const sentIds = this._sentCardIds(projectId);
+    const sentPendingCount = pendingCards.filter((card) => sentIds.has(card.id)).length;
+    const unsentPendingCards = pendingCards.filter((card) => !sentIds.has(card.id));
+    const existingCardsToSend = unsentPendingCards.slice(0, Math.max(0, targetPendingCount - sentPendingCount));
+    existingCardsToSend.forEach((card) => sentIds.add(card.id));
+
+    const missing = Math.max(0, targetPendingCount - sentPendingCount - existingCardsToSend.length);
+    if (missing === 0) { return existingCardsToSend; }
+    const newCards = await this._nextCards(projectId, missing);
+    newCards.forEach((card) => sentIds.add(card.id));
+    return [...existingCardsToSend, ...newCards];
   }
 
   private async _nextCards(projectId: string, count: number): Promise<DecisionCard[]> {
@@ -343,6 +350,15 @@ export class BuilderCortex {
     const decidedIds = new Set(decisions.map((decision) => decision.cardId));
     return (this.cards.get(projectId) ?? []).filter((card) =>
       card.status === 'pending' && !decidedIds.has(card.id));
+  }
+
+  private _sentCardIds(projectId: string): Set<string> {
+    let sentIds = this.sentCardIds.get(projectId);
+    if (!sentIds) {
+      sentIds = new Set<string>();
+      this.sentCardIds.set(projectId, sentIds);
+    }
+    return sentIds;
   }
 
   private _normalizeSpec(spec: Record<string, unknown>, project: Project): Record<string, unknown> {
