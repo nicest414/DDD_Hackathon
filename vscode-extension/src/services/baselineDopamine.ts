@@ -1,5 +1,5 @@
 import { DecisionCard, Decision, GeneratedApp, Project } from '../models/types';
-import { AIRuntimeAdapter } from './ai/aiRuntime';
+import { AIRuntimeAdapter, AIRuntimeConnectionResult, AIRuntimeProvider } from './ai/aiRuntime';
 
 type BaselineCard = Omit<DecisionCard, 'projectId' | 'status'>;
 
@@ -92,6 +92,14 @@ function normalizeCard(card: BaselineCard, projectId: string): DecisionCard {
 }
 
 export class BaselineDopamine implements AIRuntimeAdapter {
+  async testConnection(provider: AIRuntimeProvider): Promise<AIRuntimeConnectionResult> {
+    return {
+      ok: true,
+      provider,
+      message: 'Baseline mock is available.',
+    };
+  }
+
   async generateNextCard(
     project: Project,
     decisions: Decision[],

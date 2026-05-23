@@ -1,6 +1,21 @@
 import { DecisionCard, Decision, GeneratedApp, Project } from '../../models/types';
 
 export type AIRuntimeProvider = 'openai-compatible' | 'codex-cli' | 'claude-code' | 'baseline';
+export type AIRuntimeConnectionErrorKind =
+  'authentication'
+  | 'timeout'
+  | 'invalid-response'
+  | 'configuration'
+  | 'unavailable'
+  | 'unknown';
+
+export interface AIRuntimeConnectionResult {
+  ok: boolean;
+  provider: AIRuntimeProvider;
+  message: string;
+  errorKind?: AIRuntimeConnectionErrorKind;
+  detail?: string;
+}
 
 export interface AIRuntimeAdapter {
   generateNextCard(
@@ -11,9 +26,52 @@ export interface AIRuntimeAdapter {
   ): Promise<DecisionCard | null>;
 
   generateApp(project: Project, acceptedCards: DecisionCard[]): Promise<GeneratedApp>;
+
+  testConnection(provider: AIRuntimeProvider): Promise<AIRuntimeConnectionResult>;
 }
 
 export class AIRuntimeAdapterError extends Error {}
+
+export class AIRuntimeConnectionError extends AIRuntimeAdapterError {
+  constructor(
+    readonly kind: AIRuntimeConnectionErrorKind,
+    message: string,
+    readonly detail?: string,
+  ) {
+    super(message);
+  }
+}
+
+export function classifyAIRuntimeError(err: unknown): AIRuntimeConnectionError {
+  if (err instanceof AIRuntimeConnectionError) {
+    return err;
+  }
+
+  const error = err as { status?: number; code?: string; message?: string; name?: string };
+  const message = error?.message ?? String(err);
+  const normalized = message.toLowerCase();
+
+  if (error?.status === 401 || error?.status === 403 || normalized.includes('unauthorized') || normalized.includes('api key')) {
+    return new AIRuntimeConnectionError('authentication', 'AI authentication failed. Check your API key or CLI login state.', message);
+  }
+  if (error?.code === 'ETIMEDOUT' || error?.code === 'ABORT_ERR' || normalized.includes('timeout') || normalized.includes('timed out')) {
+    return new AIRuntimeConnectionError('timeout', 'AI connection timed out. Check the network, provider status, or timeout setting.', message);
+  }
+  if (normalized.includes('invalid json') || normalized.includes('no json') || normalized.includes('incomplete json') || normalized.includes('missing required field')) {
+    return new AIRuntimeConnectionError('invalid-response', 'AI responded, but the response format was invalid.', message);
+  }
+  if (normalized.includes('enoent') || normalized.includes('command not found') || normalized.includes('not found')) {
+    return new AIRuntimeConnectionError('configuration', 'AI runtime command was not found. Check the provider installation and PATH.', message);
+  }
+  if (error?.status && error.status >= 500) {
+    return new AIRuntimeConnectionError('unavailable', 'AI provider is currently unavailable.', message);
+  }
+  if (error?.status && error.status >= 400) {
+    return new AIRuntimeConnectionError('configuration', 'AI provider rejected the request. Check the model, base URL, and provider settings.', message);
+  }
+
+  return new AIRuntimeConnectionError('unknown', 'AI connection test failed.', message);
+}
 
 export function extractFirstJsonObject(text: string, source: string): string {
   const start = text.indexOf('{');
@@ -59,6 +117,36 @@ function coerceScore(value: unknown, fallback = 0.5): number {
 export abstract class BaseAIAdapter implements AIRuntimeAdapter {
   protected abstract callAI(prompt: string): Promise<string>;
   protected abstract parseJson(text: string): Record<string, unknown>;
+
+  async testConnection(provider: AIRuntimeProvider): Promise<AIRuntimeConnectionResult> {
+    try {
+      const text = await this.callAI(
+        'Return only this JSON object and no markdown: {"ok":true,"message":"connected"}',
+      );
+      const parsed = this.parseJson(text);
+      if (parsed['ok'] !== true) {
+        throw new AIRuntimeConnectionError(
+          'invalid-response',
+          'AI responded, but the response did not confirm connectivity.',
+          JSON.stringify(parsed).slice(0, 200),
+        );
+      }
+      return {
+        ok: true,
+        provider,
+        message: 'AI connection test succeeded.',
+      };
+    } catch (err) {
+      const classified = classifyAIRuntimeError(err);
+      return {
+        ok: false,
+        provider,
+        message: classified.message,
+        errorKind: classified.kind,
+        detail: classified.detail,
+      };
+    }
+  }
 
   async generateNextCard(
     project: Project,

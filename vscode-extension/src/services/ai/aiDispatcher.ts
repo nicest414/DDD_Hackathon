@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { DecisionCard, Decision, GeneratedApp, Project } from '../../models/types';
-import { AIRuntimeAdapter, AIRuntimeProvider } from './aiRuntime';
+import { AIRuntimeAdapter, AIRuntimeConnectionResult, AIRuntimeProvider } from './aiRuntime';
 import { BaselineDopamine } from '../baselineDopamine';
 import { OpenAICompatibleAdapter } from './openaiAdapter';
 import { CodexCLIAdapter } from './codexAdapter';
@@ -34,9 +34,30 @@ export class AIRuntimeDispatcher implements AIRuntimeAdapter {
     return this.dispatch().generateApp(project, acceptedCards);
   }
 
-  private dispatch(): AIRuntimeAdapter {
+  async testConnection(provider?: AIRuntimeProvider): Promise<AIRuntimeConnectionResult> {
+    const selectedProvider = provider ?? this.currentProvider();
+    this.output.appendLine(`[DDD] AI connection test started: ${selectedProvider}`);
+    const result = await this.dispatch(selectedProvider).testConnection(selectedProvider);
+    if (result.ok) {
+      this.output.appendLine(`[DDD] AI connection test succeeded: ${selectedProvider}`);
+    } else {
+      this.output.appendLine(
+        `[DDD] AI connection test failed: ${selectedProvider} kind=${result.errorKind ?? 'unknown'} message=${result.message}`,
+      );
+      if (result.detail) {
+        this.output.appendLine(`[DDD] AI connection detail: ${result.detail}`);
+      }
+    }
+    return result;
+  }
+
+  private currentProvider(): AIRuntimeProvider {
     const cfg = vscode.workspace.getConfiguration('ddd.ai');
-    const provider = cfg.get<AIRuntimeProvider>('provider') ?? 'openai-compatible';
+    return cfg.get<AIRuntimeProvider>('provider') ?? 'openai-compatible';
+  }
+
+  private dispatch(provider = this.currentProvider()): AIRuntimeAdapter {
+    const cfg = vscode.workspace.getConfiguration('ddd.ai');
     if (provider === 'baseline') {
       this.output.appendLine('[DDD] AI: baseline (mock)');
       return this.baseline;

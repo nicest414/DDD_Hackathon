@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { DDDWebSocketServer } from './services/websocketServer';
 import { AIRuntimeDispatcher } from './services/ai/aiDispatcher';
+import { AIRuntimeConnectionResult, AIRuntimeProvider } from './services/ai/aiRuntime';
 import { BaselineDopamine } from './services/baselineDopamine';
 import { BuilderCortex } from './services/builderCortex';
 import { DecisionStore } from './services/decisionStore';
@@ -13,6 +14,22 @@ let server: DDDWebSocketServer | null = null;
 let cortex: BuilderCortex | null = null;
 let store: DecisionStore | null = null;
 let currentProjectId: string | null = null;
+
+async function showAIConnectionResult(result: AIRuntimeConnectionResult): Promise<void> {
+  if (result.ok) {
+    vscode.window.showInformationMessage(`DDD: ${result.message}`);
+    return;
+  }
+
+  const detailAction = result.detail ? 'Show detail' : undefined;
+  const selected = await vscode.window.showErrorMessage(
+    `DDD: ${result.message}`,
+    ...(detailAction ? [detailAction] : []),
+  );
+  if (selected === detailAction && result.detail) {
+    vscode.window.showErrorMessage(`DDD AI error detail: ${result.detail}`);
+  }
+}
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel('DDD Builder Cortex');
@@ -67,13 +84,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       if (provider.value === 'claude-code') {
         await cfg.update('provider', provider.value, vscode.ConfigurationTarget.Global);
-        vscode.window.showInformationMessage('DDD: AI runtime configured (Claude Code)');
+        await showAIConnectionResult(await ai.testConnection(provider.value));
         return;
       }
 
       if (provider.value === 'codex-cli') {
         await cfg.update('provider', provider.value, vscode.ConfigurationTarget.Global);
-        vscode.window.showInformationMessage('DDD: AI runtime configured (Codex CLI)');
+        await showAIConnectionResult(await ai.testConnection(provider.value));
         return;
       }
 
@@ -102,13 +119,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await context.secrets.store('ddd.model', model.trim());
         await cfg.update('provider', provider.value, vscode.ConfigurationTarget.Global);
 
-        vscode.window.showInformationMessage('DDD: AI runtime configured (OpenAI-compatible)');
+        await showAIConnectionResult(await ai.testConnection(provider.value));
         return;
       }
 
       // baseline: no extra config
       await cfg.update('provider', provider.value, vscode.ConfigurationTarget.Global);
-      vscode.window.showInformationMessage('DDD: No AI runtime configured, using baseline mock implementation');
+      await showAIConnectionResult(await ai.testConnection(provider.value as AIRuntimeProvider));
+    }),
+
+    vscode.commands.registerCommand('ddd.testAIConnection', async () => {
+      await showAIConnectionResult(await ai.testConnection());
     }),
 
     vscode.commands.registerCommand('ddd.startSession', () => {
