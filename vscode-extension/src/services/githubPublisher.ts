@@ -32,6 +32,7 @@ export class GitHubPublisher {
       }
 
       // Write spec and decisions JSON
+      await fs.mkdir(projectDir, { recursive: true });
       await fs.writeFile(specPath, JSON.stringify(app.spec, null, 2));
       await fs.writeFile(decisionsPath, JSON.stringify(decisions, null, 2));
 
