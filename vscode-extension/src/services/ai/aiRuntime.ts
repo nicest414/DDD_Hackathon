@@ -1,4 +1,4 @@
-import { DecisionCard, Decision, GeneratedApp, Project } from '../models/types';
+import { DecisionCard, Decision, GeneratedApp, Project } from '../../models/types';
 
 export type AIRuntimeProvider = 'openai-compatible' | 'codex-cli' | 'claude-code' | 'baseline';
 
@@ -70,8 +70,8 @@ export abstract class BaseAIAdapter implements AIRuntimeAdapter {
       `You are an AI assistant helping design a mobile app.\n` +
       `Project: "${project.title}"\n` +
       `Initial prompt: "${project.initialPrompt}"\n` +
-      `Accepted features: ${accepted.map((c) => c.title).join(', ') || 'none'}\n` +
-      `Rejected features: ${rejected.map((c) => c.title).join(', ') || 'none'}\n\n` +
+      `Accepted features:\n${accepted.map((c) => `- ${c.title}: ${c.description} (payoff: ${c.payoff})`).join('\n') || 'none'}\n` +
+      `Rejected features:\n${rejected.map((c) => `- ${c.title}: ${c.description} (payoff: ${c.payoff})`).join('\n') || 'none'}\n\n` +
       `Suggest the next most important feature card in JSON (no markdown):\n` +
       `{"type":"moment","title":"...","hook":"...","description":"...","payoff":"...","acceptLabel":"...","rejectLabel":"...","predictedReward":"...","noveltyScore":0.0,"effortScore":0.0,"dopamineScore":0.0}`;
 
@@ -112,7 +112,7 @@ export abstract class BaseAIAdapter implements AIRuntimeAdapter {
   async generateApp(project: Project, accepted: DecisionCard[]): Promise<GeneratedApp> {
     const prompt =
       `Generate a minimal React app spec for: "${project.title}"\n` +
-      `Using these accepted features: ${accepted.map((c) => c.title).join(', ') || 'none'}\n\n` +
+      `Using these accepted features:\n${accepted.map((c) => `- ${c.title}: ${c.description} (payoff: ${c.payoff})`).join('\n') || 'none'}\n\n` +
       `Return JSON (no markdown):\n` +
       `{"name":"...","summary":"...","screens":[{"name":"...","description":"..."}],"features":["..."]}`;
 

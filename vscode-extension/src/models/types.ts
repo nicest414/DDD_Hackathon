@@ -49,6 +49,13 @@ export interface Decision {
   createdAt: string;
 }
 
+export interface AppSpec {
+  name: string;
+  summary: string;
+  screens: Array<{ name: string; description: string }>;
+  features: string[];
+}
+
 export interface GeneratedApp {
   id: string;
   projectId: string;

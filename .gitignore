@@ -63,4 +63,6 @@ windows/
 .cache/
 tmp/
 temp/
+
+# DDD test workspace
 ddd-test-workspace/private/

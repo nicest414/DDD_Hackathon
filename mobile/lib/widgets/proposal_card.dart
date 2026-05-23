@@ -130,7 +130,8 @@ class _CardBody extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          Expanded(
+          Flexible(
+            fit: FlexFit.loose,
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
               child: Text(
