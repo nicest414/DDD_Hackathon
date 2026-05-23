@@ -105,16 +105,20 @@ export class BaselineDopamine implements AIRuntimeAdapter {
     decisions: Decision[],
     _accepted: DecisionCard[],
     _rejected: DecisionCard[],
+    existingCards: DecisionCard[] = [],
   ): Promise<DecisionCard | null> {
-    return this.getNextCard(project.id, decisions);
+    return this.getNextCard(project.id, decisions, existingCards);
   }
 
   async generateApp(project: Project, _acceptedCards: DecisionCard[]): Promise<GeneratedApp> {
     return this.getMockApp(project.id);
   }
 
-  getNextCard(projectId: string, decisions: Decision[]): DecisionCard | null {
-    const usedIds = new Set(decisions.map((d) => d.cardId));
+  getNextCard(projectId: string, decisions: Decision[], existingCards: DecisionCard[] = []): DecisionCard | null {
+    const usedIds = new Set([
+      ...decisions.map((d) => d.cardId),
+      ...existingCards.map((c) => c.id),
+    ]);
     const next = MOCK_CARDS.find((c) => !usedIds.has(c.id));
     if (!next) { return null; }
     return normalizeCard(next, projectId);

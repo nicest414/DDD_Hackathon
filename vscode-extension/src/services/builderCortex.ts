@@ -9,10 +9,14 @@ import { DecisionStore } from './decisionStore';
 import { safePathToken } from './pathUtils';
 import { DDD_GENERATED_APPS_DIR } from './githubPublisher';
 
+const CARD_BATCH_SIZE = 3;
+
 export class BuilderCortex {
   private projects = new Map<string, Project>();
   private decisions = new Map<string, Decision[]>(); // keyed by projectId
   private cards = new Map<string, DecisionCard[]>();
+  private cardGenerationQueues = new Map<string, Promise<DecisionCard[]>>();
+  private sentCardIds = new Map<string, Set<string>>();
 
   constructor(
     private readonly ws: DDDWebSocketServer,
@@ -81,11 +85,10 @@ export class BuilderCortex {
 
     this.output.appendLine(`[DDD] Decision: ${action} → ${cardId}`);
 
-    // Generate next card
-    const nextCard = await this._nextCard(projectId);
-    if (nextCard) {
-      this.ws.send({ type: 'card', card: nextCard });
-    } else {
+    const nextCards = await this._topUpCards(projectId);
+    nextCards.forEach((card) => this.ws.send({ type: 'card', card }));
+
+    if (nextCards.length === 0 && this._pendingCards(projectId).length === 0) {
       this.ws.send({ type: 'complete', projectId });
       this.output.appendLine(`[DDD] Session complete: ${projectId}`);
     }
@@ -257,12 +260,54 @@ export class BuilderCortex {
   }
 
   async startProject(project: Project): Promise<void> {
-    this.output.appendLine(`[DDD] Generating first card for: ${project.title}`);
-    const firstCard = await this._nextCard(project.id);
-    if (firstCard) {
-      this.ws.send({ type: 'card', card: firstCard });
-      this.output.appendLine(`[DDD] First card sent: ${firstCard.title}`);
+    this.output.appendLine(`[DDD] Generating first cards for: ${project.title}`);
+    this.sentCardIds.set(project.id, new Set<string>());
+    const firstCards = await this._topUpCards(project.id);
+    firstCards.forEach((card) => this.ws.send({ type: 'card', card }));
+    if (firstCards.length > 0) {
+      this.output.appendLine(`[DDD] First cards sent: ${firstCards.map((card) => card.title).join(', ')}`);
     }
+  }
+
+  private async _topUpCards(projectId: string): Promise<DecisionCard[]> {
+    const previous = this.cardGenerationQueues.get(projectId) ?? Promise.resolve([]);
+    const next = previous
+      .catch(() => [])
+      .then(() => this._generateCardsToFill(projectId, CARD_BATCH_SIZE));
+
+    this.cardGenerationQueues.set(projectId, next);
+    try {
+      return await next;
+    } finally {
+      if (this.cardGenerationQueues.get(projectId) === next) {
+        this.cardGenerationQueues.delete(projectId);
+      }
+    }
+  }
+
+  private async _generateCardsToFill(projectId: string, targetPendingCount: number): Promise<DecisionCard[]> {
+    const pendingCards = this._pendingCards(projectId);
+    const sentIds = this._sentCardIds(projectId);
+    const sentPendingCount = pendingCards.filter((card) => sentIds.has(card.id)).length;
+    const unsentPendingCards = pendingCards.filter((card) => !sentIds.has(card.id));
+    const existingCardsToSend = unsentPendingCards.slice(0, Math.max(0, targetPendingCount - sentPendingCount));
+    existingCardsToSend.forEach((card) => sentIds.add(card.id));
+
+    const missing = Math.max(0, targetPendingCount - sentPendingCount - existingCardsToSend.length);
+    if (missing === 0) { return existingCardsToSend; }
+    const newCards = await this._nextCards(projectId, missing);
+    newCards.forEach((card) => sentIds.add(card.id));
+    return [...existingCardsToSend, ...newCards];
+  }
+
+  private async _nextCards(projectId: string, count: number): Promise<DecisionCard[]> {
+    const cards: DecisionCard[] = [];
+    for (let i = 0; i < count; i++) {
+      const card = await this._nextCard(projectId);
+      if (!card) { break; }
+      cards.push(card);
+    }
+    return cards;
   }
 
   private async _nextCard(projectId: string): Promise<DecisionCard | null> {
@@ -281,7 +326,7 @@ export class BuilderCortex {
       decisions.find((d) => d.cardId === c.id && d.action === 'rejected'));
 
     try {
-      const card = await this.ai.generateNextCard(project, decisions, accepted, rejected);
+      const card = await this.ai.generateNextCard(project, decisions, accepted, rejected, allCards);
       if (!card) { return null; }
       this.cards.get(projectId)?.push(card);
       await this.store.saveCard(card);
@@ -289,7 +334,7 @@ export class BuilderCortex {
     } catch (err) {
       this.output.appendLine(`[DDD] AI card generation failed: ${this._errorMessage(err)}`);
       if (fallback) {
-        const card = await this.fallbackAI.generateNextCard(project, decisions, accepted, rejected);
+        const card = await this.fallbackAI.generateNextCard(project, decisions, accepted, rejected, allCards);
         if (card) {
           this.cards.get(projectId)?.push(card);
           await this.store.saveCard(card);
@@ -298,6 +343,22 @@ export class BuilderCortex {
       }
       throw err;
     }
+  }
+
+  private _pendingCards(projectId: string): DecisionCard[] {
+    const decisions = this.decisions.get(projectId) ?? [];
+    const decidedIds = new Set(decisions.map((decision) => decision.cardId));
+    return (this.cards.get(projectId) ?? []).filter((card) =>
+      card.status === 'pending' && !decidedIds.has(card.id));
+  }
+
+  private _sentCardIds(projectId: string): Set<string> {
+    let sentIds = this.sentCardIds.get(projectId);
+    if (!sentIds) {
+      sentIds = new Set<string>();
+      this.sentCardIds.set(projectId, sentIds);
+    }
+    return sentIds;
   }
 
   private _normalizeSpec(spec: Record<string, unknown>, project: Project): Record<string, unknown> {

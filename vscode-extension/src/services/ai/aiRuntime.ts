@@ -23,6 +23,7 @@ export interface AIRuntimeAdapter {
     decisions: Decision[],
     accepted: DecisionCard[],
     rejected: DecisionCard[],
+    existingCards?: DecisionCard[],
   ): Promise<DecisionCard | null>;
 
   generateApp(project: Project, acceptedCards: DecisionCard[]): Promise<GeneratedApp>;
@@ -183,13 +184,20 @@ export abstract class BaseAIAdapter implements AIRuntimeAdapter {
     _decisions: Decision[],
     accepted: DecisionCard[],
     rejected: DecisionCard[],
+    existingCards: DecisionCard[] = [],
   ): Promise<DecisionCard | null> {
+    const pending = existingCards.filter(
+      (card) => !accepted.some((acceptedCard) => acceptedCard.id === card.id)
+        && !rejected.some((rejectedCard) => rejectedCard.id === card.id),
+    );
     const prompt =
       `You are an AI assistant helping design a mobile app.\n` +
       `Project: "${project.title}"\n` +
       `Initial prompt: "${project.initialPrompt}"\n` +
       `Accepted features:\n${accepted.map((c) => `- ${c.title}: ${c.description} (payoff: ${c.payoff})`).join('\n') || 'none'}\n` +
       `Rejected features:\n${rejected.map((c) => `- ${c.title}: ${c.description} (payoff: ${c.payoff})`).join('\n') || 'none'}\n\n` +
+      `Already suggested but not decided yet:\n${pending.map((c) => `- ${c.title}: ${c.description} (payoff: ${c.payoff})`).join('\n') || 'none'}\n\n` +
+      `Do not repeat accepted, rejected, or already suggested ideas.\n` +
       `Suggest the next most important feature card in JSON (no markdown):\n` +
       `{"type":"moment","title":"...","hook":"...","description":"...","payoff":"...","acceptLabel":"...","rejectLabel":"...","predictedReward":"...","noveltyScore":0.0,"effortScore":0.0,"dopamineScore":0.0}`;
 
