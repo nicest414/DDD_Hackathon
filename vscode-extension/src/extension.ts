@@ -9,7 +9,7 @@ import { BuilderCortex } from './services/builderCortex';
 import { DecisionStore } from './services/decisionStore';
 import { GitHubPublisher } from './services/githubPublisher';
 import { safePathToken } from './services/pathUtils';
-import { SwipeEvent, StartSessionEvent } from './models/types';
+import { SwipeEvent, StartSessionEvent, FinishSessionEvent } from './models/types';
 
 let server: DDDWebSocketServer | null = null;
 let cortex: BuilderCortex | null = null;
@@ -54,6 +54,47 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     } else if (event.type === 'swipe') {
       const e = event as SwipeEvent;
       await cortex!.handleSwipe(e.projectId, e.cardId, e.action, e.createdAt);
+    } else if (event.type === 'finishSession') {
+      const e = event as FinishSessionEvent;
+      const projectId = e.projectId;
+      currentProjectId = projectId;
+
+      let app = await store!.getGeneratedApp(projectId);
+      if (!app) {
+        app = await cortex!.generateApp(projectId);
+      }
+      if (!app) {
+        ws.send({
+          type: 'error',
+          projectId,
+          code: 'AI_RUNTIME_UNAVAILABLE',
+          message: 'App generation failed.',
+          recoverable: false,
+        });
+        return;
+      }
+
+      const repoPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (repoPath) {
+        try {
+          const decisions = await store!.getDecisions(projectId);
+          const projectDir = path.join(repoPath, projectId);
+          await fs.promises.mkdir(projectDir, { recursive: true });
+          await fs.promises.writeFile(path.join(projectDir, 'ddd-spec.json'), JSON.stringify(app.spec, null, 2));
+          await fs.promises.writeFile(path.join(projectDir, 'ddd-decisions.json'), JSON.stringify(decisions, null, 2));
+        } catch (err) {
+          output.appendLine(`[DDD] finish: failed to write spec files: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+
+      ws.send({
+        type: 'pr',
+        projectId,
+        repositoryUrl: '',
+        branchName: `ddd/${projectId}`,
+        url: '',
+        status: 'localSaved',
+      });
     }
   };
 

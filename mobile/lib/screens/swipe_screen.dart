@@ -8,6 +8,7 @@ import '../models/project.dart';
 import '../config/app_config.dart';
 import '../services/websocket_service.dart';
 import '../widgets/proposal_card.dart';
+import 'finish_screen.dart';
 
 class SwipeScreen extends StatefulWidget {
   final Project project;
@@ -33,6 +34,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
   bool _animating = false;
   final _likedCardIds = <String>{};
   bool _waitingForCard = true;
+  bool _navigatingToFinish = false;
 
   bool get _heartActive =>
       _currentCard != null && _likedCardIds.contains(_currentCard!.id);
@@ -72,8 +74,28 @@ class _SwipeScreenState extends State<SwipeScreen> {
       t.cancel();
     }
     _wsSub?.cancel();
-    _ws.disconnect();
+    if (!_navigatingToFinish) {
+      _ws.disconnect();
+    }
     super.dispose();
+  }
+
+  void _finish() {
+    // 送信待ちの決定を即時送信してからセッションを終了する
+    for (final cardId in _pending.keys.toList()) {
+      _pending[cardId]!.cancel();
+      final decision = _decisions.lastWhere((d) => d.cardId == cardId);
+      _ws.sendDecision(decision);
+    }
+    _pending.clear();
+
+    _navigatingToFinish = true;
+    _ws.sendFinish(widget.project.id);
+
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const FinishScreen()),
+    );
   }
 
   Future<void> _tryConnect() async {
@@ -208,6 +230,27 @@ class _SwipeScreenState extends State<SwipeScreen> {
                   }),
                 ),
               ),
+
+            // Finish button
+            Positioned(
+              left: 20,
+              right: 20,
+              bottom: 20,
+              child: FilledButton(
+                onPressed: _finish,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF7c3aed),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: const Text(
+                  'Finish',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
 
           ],
         ),

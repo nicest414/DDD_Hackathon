@@ -226,6 +226,22 @@ class WebSocketService {
     }
   }
 
+  void sendFinish(String projectId) {
+    if (status != WsStatus.connected) return;
+    final payload = {'type': 'finish', 'projectId': projectId};
+    try {
+      _channel!.sink.add(jsonEncode(payload));
+    } catch (error, stackTrace) {
+      developer.log(
+        'WebSocket send failed in sendFinish',
+        name: 'WebSocketService',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      _onDisconnect();
+    }
+  }
+
   Future<void> dispose() async {
     await disconnect();
     await _controller.close();
