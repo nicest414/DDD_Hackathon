@@ -153,6 +153,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         try {
           const decisions = await store!.getDecisions(currentProjectId);
           const projectDir = path.join(repoPath, currentProjectId);
+          await fs.promises.mkdir(projectDir, { recursive: true });
           await fs.promises.writeFile(path.join(projectDir, 'ddd-spec.json'), JSON.stringify(app.spec, null, 2));
           await fs.promises.writeFile(path.join(projectDir, 'ddd-decisions.json'), JSON.stringify(decisions, null, 2));
           vscode.window.showInformationMessage('DDD: ddd-spec.json / ddd-decisions.json を生成しました');
