@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
@@ -7,7 +8,10 @@ import '../models/decision.dart';
 import '../models/project.dart';
 import '../config/app_config.dart';
 import '../services/websocket_service.dart';
+import '../services/audio_service.dart';
+import '../services/video_service.dart';
 import '../widgets/proposal_card.dart';
+import '../widgets/video_overlay.dart';
 import 'finish_screen.dart';
 
 class SwipeScreen extends StatefulWidget {
@@ -28,6 +32,9 @@ class SwipeScreen extends StatefulWidget {
 
 class _SwipeScreenState extends State<SwipeScreen> {
   final _ws = WebSocketService();
+  final _audio = AudioService();
+  final _video = VideoService();
+  final _random = Random();
   final _decisions = <Decision>[];
   final _cards = <DecisionCard>[];
   // cardId → send timer (pending decisions not yet sent to server)
@@ -36,6 +43,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
   bool _animating = false;
   final _likedCardIds = <String>{};
   bool _waitingForCard = true;
+  bool _showVideo = false;
+  String? _videoPath;
+  Timer? _loadingVideoTimer;
   bool _navigatingToFinish = false;
 
   bool get _heartActive =>
@@ -50,6 +60,8 @@ class _SwipeScreenState extends State<SwipeScreen> {
     _wsSub = _ws.events.listen((event) {
       if (!mounted) return;
       if (event is WsCardEvent && event.card.projectId == widget.project.id) {
+        _loadingVideoTimer?.cancel();
+        _loadingVideoTimer = null;
         setState(() {
           _cards.add(event.card);
           _waitingForCard = false;
@@ -79,6 +91,8 @@ class _SwipeScreenState extends State<SwipeScreen> {
       t.cancel();
     }
     _wsSub?.cancel();
+    _audio.dispose();
+    _loadingVideoTimer?.cancel();
     if (!_navigatingToFinish) {
       _ws.disconnect();
     }
@@ -110,6 +124,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
       _waitingForCard = true;
       _connectionMessage = null;
     });
+    _scheduleLoadingVideo();
     await _ws.connect(widget.serverUrl);
     if (_ws.status == WsStatus.connected) {
       _ws.sendStartSession(widget.project);
@@ -127,6 +142,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
 
   void _decide(String action) {
     if (_animating || _currentCard == null) return;
+    _audio.playRandom();
     setState(() => _animating = true);
 
     final card = _currentCard!;
@@ -151,11 +167,41 @@ class _SwipeScreenState extends State<SwipeScreen> {
         _animating = false;
         _waitingForCard = _currentCard == null;
       });
+      if (_waitingForCard) {
+        _scheduleLoadingVideo();
+      } else {
+        _maybeShowVideo();
+      }
+    });
+  }
+
+  void _scheduleLoadingVideo() {
+    _loadingVideoTimer?.cancel();
+    _loadingVideoTimer = Timer(const Duration(milliseconds: 1500), () {
+      _loadingVideoTimer = null;
+      if (!mounted || !_waitingForCard) return;
+      final path = _video.pickRandom();
+      if (path == null) return;
+      setState(() {
+        _showVideo = true;
+        _videoPath = path;
+      });
+    });
+  }
+
+  void _maybeShowVideo() {
+    if (_random.nextInt(5) == 0) return;
+    final path = _video.pickRandom();
+    if (path == null) return;
+    setState(() {
+      _showVideo = true;
+      _videoPath = path;
     });
   }
 
   void _goBack() {
     if (_animating || _currentIndex <= 0) return;
+    _audio.playRandom();
 
     // 戻るカードの送信待ちタイマーをキャンセルして重複送信を防ぐ
     final prevCard = _cards[_currentIndex - 1];
@@ -235,6 +281,30 @@ class _SwipeScreenState extends State<SwipeScreen> {
                       _likedCardIds.add(id);
                     }
                   }),
+                ),
+              ),
+
+            // Video overlay (loading wait / random interstitial)
+            if (_showVideo && _videoPath != null)
+              Positioned.fill(
+                child: VideoOverlay(
+                  key: ValueKey(_videoPath),
+                  assetPath: _videoPath!,
+                  onFinished: () => setState(() {
+                    _showVideo = false;
+                    _videoPath = null;
+                  }),
+                  onSwiped: () {
+                    if (_waitingForCard) {
+                      final next = _video.pickRandom(exclude: _videoPath);
+                      setState(() => _videoPath = next ?? _videoPath);
+                    } else {
+                      setState(() {
+                        _showVideo = false;
+                        _videoPath = null;
+                      });
+                    }
+                  },
                 ),
               ),
             // Finish button
