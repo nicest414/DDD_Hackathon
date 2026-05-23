@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { DDDWebSocketServer } from './services/websocketServer';
-import { AIRuntimeDispatcher } from './services/aiDispatcher';
+import { AIRuntimeDispatcher } from './services/ai/aiDispatcher';
 import { BaselineDopamine } from './services/baselineDopamine';
 import { BuilderCortex } from './services/builderCortex';
 import { DecisionStore } from './services/decisionStore';
@@ -24,7 +24,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const ws = new DDDWebSocketServer(output);
   const baseline = new BaselineDopamine();
-  const ai = new AIRuntimeDispatcher(context, baseline);
+  const ai = new AIRuntimeDispatcher(context, baseline, output);
   server = ws;
   cortex = new BuilderCortex(ws, ai, baseline, store, output);
 
@@ -124,8 +124,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showErrorMessage('DDD: No active project. Start a session first.');
         return;
       }
-      await cortex!.generateApp(currentProjectId);
-      vscode.window.showInformationMessage('DDD: App generated');
+      const app = await cortex!.generateApp(currentProjectId);
+      if (!app) {
+        vscode.window.showErrorMessage('DDD: App generation failed.');
+        return;
+      }
+      const repoPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (repoPath) {
+        try {
+          const decisions = await store!.getDecisions(currentProjectId);
+          await fs.promises.writeFile(path.join(repoPath, 'ddd-spec.json'), JSON.stringify(app.spec, null, 2));
+          await fs.promises.writeFile(path.join(repoPath, 'ddd-decisions.json'), JSON.stringify(decisions, null, 2));
+          vscode.window.showInformationMessage('DDD: ddd-spec.json / ddd-decisions.json を生成しました');
+        } catch (err) {
+          console.error('[DDD] Failed to write ddd-spec.json / ddd-decisions.json:', err);
+          vscode.window.showErrorMessage('DDD: ddd-spec.json / ddd-decisions.json の書き込みに失敗しました');
+        }
+      } else {
+        vscode.window.showInformationMessage('DDD: App generated');
+      }
     }),
 
     vscode.commands.registerCommand('ddd.openPreview', () => {
@@ -157,7 +174,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showErrorMessage('DDD: No workspace folder open.');
         return;
       }
-      const result = await publisher.publish(app, decisions, repoPath);
+      let result;
+      try {
+        result = await publisher.publish(app, decisions, repoPath);
+      } catch (err) {
+        output.appendLine(`[DDD] Publish failed before local files were saved: ${err instanceof Error ? err.message : String(err)}`);
+        ws.send({
+          type: 'error',
+          projectId,
+          code: 'GITHUB_UNAVAILABLE',
+          message: 'DDD: GitHub publish failed before local files were saved.',
+          recoverable: true,
+        });
+        vscode.window.showErrorMessage('DDD: GitHub publish failed before local files were saved.');
+        return;
+      }
 
       if (result.pullRequestUrl) {
         ws.send({
@@ -169,6 +200,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           status: 'created',
         });
         vscode.window.showInformationMessage(`DDD: PR created → ${result.pullRequestUrl}`);
+      } else if (result.repositoryUrl) {
+        const message = `DDD: PR creation failed after pushing to ${result.repositoryUrl}.`;
+        ws.send({
+          type: 'error',
+          projectId,
+          code: 'GITHUB_UNAVAILABLE',
+          message,
+          recoverable: true,
+        });
+        vscode.window.showErrorMessage(message);
       } else {
         ws.send({
           type: 'pr',

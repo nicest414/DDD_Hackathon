@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { Project, Decision, DecisionCard, GeneratedApp } from '../models/types';
-import { AIRuntimeAdapter, AIRuntimeAdapterError } from './aiRuntime';
+import { AIRuntimeAdapter, AIRuntimeAdapterError } from './ai/aiRuntime';
 import { DDDWebSocketServer } from './websocketServer';
 import { DecisionStore } from './decisionStore';
 
@@ -90,8 +90,10 @@ export class BuilderCortex {
       return undefined;
     }
 
-    const decisions = this.decisions.get(projectId) ?? [];
-    const allCards = this.cards.get(projectId) ?? [];
+    const [decisions, allCards] = await Promise.all([
+      this.store.getDecisions(projectId),
+      this.store.getCards(projectId),
+    ]);
     const accepted = allCards.filter(
       (c) => decisions.find((d) => d.cardId === c.id && d.action === 'accepted'),
     );
@@ -103,10 +105,12 @@ export class BuilderCortex {
     let app;
     try {
       app = await this.ai.generateApp(project, accepted);
+      app = { ...app, spec: this._normalizeSpec(app.spec, project) };
     } catch (err) {
       if (err instanceof AIRuntimeAdapterError) {
-        this.output.appendLine('[DDD] AI failed, using baseline');
+        this.output.appendLine(`[DDD] AI generateApp failed: ${this._errorMessage(err)}`);
         app = await this.fallbackAI.generateApp(project, accepted);
+        app = { ...app, spec: this._normalizeSpec(app.spec, project) };
       } else {
         project.status = 'failed';
         await this.store.saveProject(project);
@@ -171,6 +175,7 @@ export class BuilderCortex {
       await this.store.saveCard(card);
       return card;
     } catch (err) {
+      this.output.appendLine(`[DDD] AI card generation failed: ${this._errorMessage(err)}`);
       if (fallback) {
         const card = await this.fallbackAI.generateNextCard(project, decisions, accepted, rejected);
         if (card) {
@@ -181,6 +186,15 @@ export class BuilderCortex {
       }
       throw err;
     }
+  }
+
+  private _normalizeSpec(spec: Record<string, unknown>, project: Project): Record<string, unknown> {
+    return {
+      name: typeof spec['name'] === 'string' && spec['name'] ? spec['name'] : project.title,
+      summary: typeof spec['summary'] === 'string' && spec['summary'] ? spec['summary'] : project.initialPrompt,
+      screens: Array.isArray(spec['screens']) ? spec['screens'] : [],
+      features: Array.isArray(spec['features']) ? spec['features'] : [],
+    };
   }
 
   private _errorMessage(err: unknown): string {

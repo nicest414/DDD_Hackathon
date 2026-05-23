@@ -60,6 +60,11 @@
           "default": "gpt-4o-mini",
           "description": "Model name"
         },
+        "ddd.ai.claudeModel": {
+          "type": "string",
+          "default": "claude-haiku-4-5-20251001",
+          "description": "Model passed to claude -p --model (e.g. claude-haiku-4-5-20251001, claude-sonnet-4-6)"
+        },
         "ddd.ai.timeoutMs": {
           "type": "number",
           "default": 30000,
