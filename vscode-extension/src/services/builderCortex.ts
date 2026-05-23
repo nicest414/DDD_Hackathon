@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
+import { promises as fs } from 'fs';
 import { Project, Decision, DecisionCard, GeneratedApp } from '../models/types';
 import { AIRuntimeAdapter, AIRuntimeAdapterError } from './ai/aiRuntime';
 import { DDDWebSocketServer } from './websocketServer';
@@ -131,6 +133,29 @@ export class BuilderCortex {
     terminal.sendText('npm run dev');
     terminal.show();
     // TODO: detect Vite port and send PreviewEvent to mobile
+  }
+
+  async handleStartSession(project: Project): Promise<void> {
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (workspaceRoot) {
+      const projectFolder = path.join(workspaceRoot, project.id);
+      let isRestoration: boolean;
+      try {
+        await fs.access(projectFolder);
+        isRestoration = true;
+      } catch {
+        await fs.mkdir(projectFolder, { recursive: true });
+        isRestoration = false;
+      }
+      this.output.appendLine(
+        isRestoration
+          ? `[DDD] Restoring session: ${project.title} (${project.id})`
+          : `[DDD] Created project folder: ${project.id}`,
+      );
+    }
+
+    await this.registerProject(project);
+    await this.startProject(project);
   }
 
   async registerProject(project: Project): Promise<void> {
