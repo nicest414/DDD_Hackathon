@@ -37,9 +37,8 @@ class _ProposalCardWidgetState extends State<ProposalCardWidget> {
       }
     } else if (_dragY > _threshold) {
       widget.onPrevious();
-    } else {
-      setState(() => _dragY = 0);
     }
+    if (mounted) setState(() => _dragY = 0);
   }
 
   @override

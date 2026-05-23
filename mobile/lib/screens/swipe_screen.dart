@@ -27,6 +27,8 @@ class _SwipeScreenState extends State<SwipeScreen> {
   final _ws = WebSocketService();
   final _decisions = <Decision>[];
   final _cards = <DecisionCard>[];
+  // cardId → send timer (pending decisions not yet sent to server)
+  final _pending = <String, Timer>{};
   int _currentIndex = 0;
   bool _animating = false;
   final _likedCardIds = <String>{};
@@ -66,6 +68,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
 
   @override
   void dispose() {
+    for (final t in _pending.values) {
+      t.cancel();
+    }
     _wsSub?.cancel();
     _ws.disconnect();
     super.dispose();
@@ -103,7 +108,12 @@ class _SwipeScreenState extends State<SwipeScreen> {
       action: action,
     );
     _decisions.add(decision);
-    _ws.sendDecision(decision);
+
+    // 送信を500ms遅延してgoBackによるキャンセルを可能にする
+    _pending[card.id] = Timer(const Duration(milliseconds: 500), () {
+      _pending.remove(card.id);
+      if (mounted) _ws.sendDecision(decision);
+    });
 
     Future.delayed(const Duration(milliseconds: 350), () {
       if (!mounted) return;
@@ -117,6 +127,12 @@ class _SwipeScreenState extends State<SwipeScreen> {
 
   void _goBack() {
     if (_animating || _currentIndex <= 0) return;
+
+    // 戻るカードの送信待ちタイマーをキャンセルして重複送信を防ぐ
+    final prevCard = _cards[_currentIndex - 1];
+    _pending[prevCard.id]?.cancel();
+    _pending.remove(prevCard.id);
+
     setState(() {
       _currentIndex--;
       if (_decisions.isNotEmpty) _decisions.removeLast();
