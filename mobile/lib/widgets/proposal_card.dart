@@ -141,7 +141,7 @@ class _CardBody extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             card.hook,
-            maxLines: 4,
+            maxLines: 3,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 26,
@@ -149,15 +149,16 @@ class _CardBody extends StatelessWidget {
               height: 1.25,
             ),
           ),
-          const Spacer(),
-          Text(
-            card.description,
-            maxLines: 5,
-            overflow: TextOverflow.fade,
-            style: const TextStyle(
-              fontSize: 14,
-              color: Color(0xFF94a3b8),
-              height: 1.6,
+          const SizedBox(height: 8),
+          Flexible(
+            child: Text(
+              card.description,
+              overflow: TextOverflow.fade,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Color(0xFF94a3b8),
+                height: 1.6,
+              ),
             ),
           ),
           const SizedBox(height: 12),
