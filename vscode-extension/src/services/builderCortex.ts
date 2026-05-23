@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
 import { Project, Decision, DecisionCard, GeneratedApp } from '../models/types';
 import { AIRuntimeAdapter, AIRuntimeAdapterError } from './ai/aiRuntime';
 import { DDDWebSocketServer } from './websocketServer';
@@ -141,13 +142,77 @@ export class BuilderCortex {
       return;
     }
 
+    const previewUrl = 'http://localhost:5173';
+    const readyPattern = /(?:\bready\b|Local:|http:\/\/localhost:5173|Vite.*ready)/i;
+    const command = this._previewCommand(generatedAppPath, workspacePath);
+    const writeEmitter = new vscode.EventEmitter<string>();
+    const closeEmitter = new vscode.EventEmitter<void | number>();
+    let childProcess: ChildProcessWithoutNullStreams | undefined;
+
     const terminal = vscode.window.createTerminal({
       name: 'DDD Preview',
-      cwd: generatedAppPath,
+      pty: {
+        onDidWrite: writeEmitter.event,
+        onDidClose: closeEmitter.event,
+        open: () => {
+          let outputBuffer = '';
+          let readySent = false;
+
+          const forwardOutput = (data: Buffer | string): void => {
+            const text = typeof data === 'string' ? data : data.toString('utf8');
+            writeEmitter.fire(this._terminalOutputToText(text));
+          };
+
+          const handleOutput = (data: Buffer | string): void => {
+            if (readySent) {
+              return;
+            }
+
+            const text = typeof data === 'string' ? data : data.toString('utf8');
+            outputBuffer = `${outputBuffer}${text}`.slice(-8192);
+            if (!readyPattern.test(outputBuffer)) {
+              return;
+            }
+
+            readySent = true;
+            this.ws.send({ type: 'preview', projectId, url: previewUrl, status: 'ready' });
+            childProcess?.stdout.removeListener('data', handleOutput);
+            childProcess?.stderr.removeListener('data', handleOutput);
+          };
+
+          const shellCommand = process.platform === 'win32' ? 'cmd.exe' : 'sh';
+          const shellArgs = process.platform === 'win32'
+            ? ['/d', '/s', '/c', command]
+            : ['-lc', command];
+
+          childProcess = spawn(shellCommand, shellArgs, {
+            cwd: generatedAppPath,
+            env: process.env,
+          });
+
+          childProcess.stdout.on('data', forwardOutput);
+          childProcess.stderr.on('data', forwardOutput);
+          childProcess.stdout.on('data', handleOutput);
+          childProcess.stderr.on('data', handleOutput);
+
+          childProcess.once('error', (err) => {
+            writeEmitter.fire(this._terminalOutputToText(`[DDD] Preview failed: ${this._errorMessage(err)}\n`));
+            closeEmitter.fire();
+          });
+
+          childProcess.once('exit', (exitCode) => {
+            childProcess?.stdout.removeListener('data', handleOutput);
+            childProcess?.stderr.removeListener('data', handleOutput);
+            closeEmitter.fire(exitCode ?? 1);
+          });
+        },
+        close: () => {
+          childProcess?.kill();
+        },
+      },
     });
-    terminal.sendText(this._previewCommand(generatedAppPath, workspacePath));
     terminal.show();
-    this.ws.send({ type: 'preview', projectId, url: 'http://localhost:5173' });
+    this.ws.send({ type: 'preview', projectId, url: previewUrl, status: 'starting' });
   }
 
   async registerProject(project: Project): Promise<void> {
@@ -216,6 +281,10 @@ export class BuilderCortex {
 
   private _errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
+  }
+
+  private _terminalOutputToText(text: string): string {
+    return text.replace(/\r?\n/g, '\r\n');
   }
 
   private _previewCommand(generatedAppPath: string, workspacePath: string): string {
