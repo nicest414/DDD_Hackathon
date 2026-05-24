@@ -26,6 +26,15 @@ export interface AIRuntimeAdapter {
     existingCards?: DecisionCard[],
   ): Promise<DecisionCard | null>;
 
+  generateCardBatch(
+    project: Project,
+    decisions: Decision[],
+    accepted: DecisionCard[],
+    rejected: DecisionCard[],
+    existingCards: DecisionCard[],
+    count: number,
+  ): Promise<DecisionCard[]>;
+
   generateApp(project: Project, acceptedCards: DecisionCard[]): Promise<GeneratedApp>;
 
   testConnection(provider: AIRuntimeProvider): Promise<AIRuntimeConnectionResult>;
@@ -123,6 +132,44 @@ export function extractFirstJsonObject(text: string, source: string): string {
   return text.slice(start, end + 1);
 }
 
+export function extractFirstJsonArray(text: string, source: string): string {
+  const start = text.indexOf('[');
+  if (start === -1) {
+    throw new AIRuntimeAdapterError(`No JSON array found in ${source} output: ${text.slice(0, 200)}`);
+  }
+  let depth = 0;
+  let end = -1;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+    } else if (char === '[') {
+      depth++;
+    } else if (char === ']') {
+      depth--;
+      if (depth === 0) { end = i; break; }
+    }
+  }
+  if (end === -1) {
+    throw new AIRuntimeAdapterError(`Incomplete JSON array in ${source} output: ${text.slice(0, 200)}`);
+  }
+  return text.slice(start, end + 1);
+}
+
 const CARD_TYPES = new Set<DecisionCard['type']>([
   'concept', 'feature', 'ui', 'flow', 'data', 'moment', 'reward', 'polish', 'risk',
 ]);
@@ -147,6 +194,25 @@ function coerceScore(value: unknown, fallback = 0.5): number {
 export abstract class BaseAIAdapter implements AIRuntimeAdapter {
   protected abstract callAI(prompt: string): Promise<string>;
   protected abstract parseJson(text: string): Record<string, unknown>;
+
+  protected parseJsonArray(text: string): Array<Record<string, unknown>> {
+    const json = extractFirstJsonArray(text, 'AI');
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(json) as unknown;
+    } catch {
+      throw new AIRuntimeAdapterError(`Invalid JSON array from AI: ${json.slice(0, 200)}`);
+    }
+    if (!Array.isArray(parsed)) {
+      throw new AIRuntimeAdapterError('AI response must be a JSON array.');
+    }
+    return parsed.map((item, index) => {
+      if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+        throw new AIRuntimeAdapterError(`AI response item ${index} must be a JSON object.`);
+      }
+      return item as Record<string, unknown>;
+    });
+  }
 
   async testConnection(provider: AIRuntimeProvider): Promise<AIRuntimeConnectionResult> {
     try {
@@ -204,6 +270,40 @@ export abstract class BaseAIAdapter implements AIRuntimeAdapter {
     const text = await this.callAI(prompt);
     const parsed = this.parseJson(text);
 
+    return this.cardFromJson(project.id, parsed);
+  }
+
+  async generateCardBatch(
+    project: Project,
+    _decisions: Decision[],
+    accepted: DecisionCard[],
+    rejected: DecisionCard[],
+    existingCards: DecisionCard[] = [],
+    count: number,
+  ): Promise<DecisionCard[]> {
+    const pending = existingCards.filter(
+      (card) => !accepted.some((acceptedCard) => acceptedCard.id === card.id)
+        && !rejected.some((rejectedCard) => rejectedCard.id === card.id),
+    );
+    const prompt =
+      `You are an AI assistant helping design a mobile app.\n` +
+      `Project: "${project.title}"\n` +
+      `Initial prompt: "${project.initialPrompt}"\n` +
+      `Accepted features:\n${accepted.map((c) => `- ${c.title}: ${c.description} (payoff: ${c.payoff})`).join('\n') || 'none'}\n` +
+      `Rejected features:\n${rejected.map((c) => `- ${c.title}: ${c.description} (payoff: ${c.payoff})`).join('\n') || 'none'}\n\n` +
+      `Already suggested but not decided yet:\n${pending.map((c) => `- ${c.title}: ${c.description} (payoff: ${c.payoff})`).join('\n') || 'none'}\n\n` +
+      `Do not repeat accepted, rejected, or already suggested ideas.\n` +
+      `Return only a JSON array of ${count} distinct feature cards and no markdown.\n` +
+      `Each item must have this shape:\n` +
+      `{"type":"moment","title":"...","hook":"...","description":"...","payoff":"...","acceptLabel":"...","rejectLabel":"...","predictedReward":"...","noveltyScore":0.0,"effortScore":0.0,"dopamineScore":0.0}`;
+
+    const text = await this.callAI(prompt);
+    return this.parseJsonArray(text)
+      .slice(0, count)
+      .map((parsed) => this.cardFromJson(project.id, parsed));
+  }
+
+  protected cardFromJson(projectId: string, parsed: Record<string, unknown>): DecisionCard {
     const rawType = optionalString(parsed['type'], 'feature');
     const type = CARD_TYPES.has(rawType as DecisionCard['type'])
       ? rawType as DecisionCard['type']
@@ -217,8 +317,8 @@ export abstract class BaseAIAdapter implements AIRuntimeAdapter {
     const rejectLabel = optionalString(parsed['rejectLabel'], '今はいらない');
 
     return {
-      id: `card-${Date.now()}`,
-      projectId: project.id,
+      id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      projectId,
       type,
       title,
       hook,

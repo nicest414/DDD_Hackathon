@@ -70,6 +70,50 @@ const MOCK_CARDS: BaselineCard[] = [
     payload: {}, predictedReward: '視認性が向上します',
     noveltyScore: 0.4, effortScore: 0.3, dopamineScore: 0.5,
   },
+  {
+    id: 'mock-7', type: 'flow',
+    title: '初回オンボーディング',
+    hook: '最初の30秒で使い方と価値が伝わります。',
+    description: '初回起動時に、習慣の作り方と達成チェックの流れを短く案内します。',
+    payoff: '始める前の迷いが減り、最初の習慣登録まで進みやすくなります。',
+    acceptLabel: '入れたい',
+    rejectLabel: 'すぐ始めたい',
+    payload: {}, predictedReward: '初回離脱を減らします',
+    noveltyScore: 0.5, effortScore: 0.4, dopamineScore: 0.6,
+  },
+  {
+    id: 'mock-8', type: 'data',
+    title: 'カテゴリ別の習慣整理',
+    hook: '生活、仕事、健康を分けて見渡せます。',
+    description: '習慣にカテゴリを設定し、一覧画面で絞り込みできるようにします。',
+    payoff: '習慣が増えても、今見たいものだけに集中できます。',
+    acceptLabel: '整理したい',
+    rejectLabel: 'シンプルでいい',
+    payload: {}, predictedReward: '長く使っても破綻しにくくなります',
+    noveltyScore: 0.6, effortScore: 0.5, dopamineScore: 0.65,
+  },
+  {
+    id: 'mock-9', type: 'moment',
+    title: '達成時の小さな祝福',
+    hook: 'チェックした瞬間に気持ちいい反応が返ります。',
+    description: '達成マークを付けたときに短いアニメーションとメッセージを表示します。',
+    payoff: '毎日のチェックが作業ではなく、少し嬉しい瞬間になります。',
+    acceptLabel: '欲しい',
+    rejectLabel: '静かでいい',
+    payload: {}, predictedReward: '操作の報酬感が上がります',
+    noveltyScore: 0.7, effortScore: 0.3, dopamineScore: 0.85,
+  },
+  {
+    id: 'mock-10', type: 'risk',
+    title: '失敗日のリカバリー',
+    hook: '途切れても戻ってこられる余白を作ります。',
+    description: '未達成の日があっても、翌日に再開しやすい励ましや再計画を表示します。',
+    payoff: '一度の失敗でアプリを開かなくなるリスクを下げます。',
+    acceptLabel: '大事',
+    rejectLabel: '不要',
+    payload: {}, predictedReward: '継続体験が折れにくくなります',
+    noveltyScore: 0.8, effortScore: 0.5, dopamineScore: 0.8,
+  },
 ];
 
 function clampScore(score: number): number {
@@ -108,6 +152,25 @@ export class BaselineDopamine implements AIRuntimeAdapter {
     existingCards: DecisionCard[] = [],
   ): Promise<DecisionCard | null> {
     return this.getNextCard(project.id, decisions, existingCards);
+  }
+
+  async generateCardBatch(
+    project: Project,
+    decisions: Decision[],
+    _accepted: DecisionCard[],
+    _rejected: DecisionCard[],
+    existingCards: DecisionCard[] = [],
+    count: number,
+  ): Promise<DecisionCard[]> {
+    const cards: DecisionCard[] = [];
+    const draftExisting = [...existingCards];
+    for (let i = 0; i < count; i++) {
+      const card = this.getNextCard(project.id, decisions, draftExisting);
+      if (!card) { break; }
+      cards.push(card);
+      draftExisting.push(card);
+    }
+    return cards;
   }
 
   async generateApp(project: Project, _acceptedCards: DecisionCard[]): Promise<GeneratedApp> {
