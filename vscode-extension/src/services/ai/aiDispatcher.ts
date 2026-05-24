@@ -31,6 +31,17 @@ export class AIRuntimeDispatcher implements AIRuntimeAdapter {
     return this.dispatch().generateNextCard(project, decisions, accepted, rejected, existingCards);
   }
 
+  async generateCardBatch(
+    project: Project,
+    decisions: Decision[],
+    accepted: DecisionCard[],
+    rejected: DecisionCard[],
+    existingCards: DecisionCard[],
+    count: number,
+  ): Promise<DecisionCard[]> {
+    return this.dispatch().generateCardBatch(project, decisions, accepted, rejected, existingCards, count);
+  }
+
   async generateApp(project: Project, acceptedCards: DecisionCard[]): Promise<GeneratedApp> {
     return this.dispatch().generateApp(project, acceptedCards);
   }
