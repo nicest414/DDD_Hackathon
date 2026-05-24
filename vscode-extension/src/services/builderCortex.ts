@@ -17,6 +17,7 @@ export class BuilderCortex {
   private decisions = new Map<string, Decision[]>(); // keyed by projectId
   private cards = new Map<string, DecisionCard[]>();
   private cardGenerationQueues = new Map<string, Promise<DecisionCard[]>>();
+  private foregroundCardGenerationInFlight = new Map<string, boolean>();
   private cardQueues = new Map<string, DecisionCard[]>();
   private sentCardIds = new Map<string, Set<string>>();
 
@@ -267,6 +268,19 @@ export class BuilderCortex {
   }
 
   private async _topUpCards(projectId: string, targetQueuedCount = CARD_BATCH_SIZE): Promise<DecisionCard[]> {
+    if (targetQueuedCount <= 1) {
+      if (this.foregroundCardGenerationInFlight.get(projectId)) {
+        return this._cardQueue(projectId);
+      }
+
+      this.foregroundCardGenerationInFlight.set(projectId, true);
+      try {
+        return await this._generateCardsToFill(projectId, targetQueuedCount);
+      } finally {
+        this.foregroundCardGenerationInFlight.delete(projectId);
+      }
+    }
+
     const previous = this.cardGenerationQueues.get(projectId) ?? Promise.resolve([]);
     const next = previous
       .catch(() => [])
@@ -295,9 +309,8 @@ export class BuilderCortex {
   private async _generateCardsToFill(projectId: string, targetQueuedCount: number): Promise<DecisionCard[]> {
     const queue = this._cardQueue(projectId);
     const sentIds = this._sentCardIds(projectId);
-    const queuedIds = new Set(queue.map((card) => card.id));
     const pendingCards = this._pendingCards(projectId).filter(
-      (card) => !sentIds.has(card.id) && !queuedIds.has(card.id),
+      (card) => !sentIds.has(card.id) && !queue.some((queuedCard) => queuedCard.id === card.id),
     );
 
     for (const card of pendingCards) {
@@ -308,7 +321,12 @@ export class BuilderCortex {
     const missing = Math.max(0, targetQueuedCount - queue.length);
     if (missing > 0) {
       const newCards = await this._generateCardBatch(projectId, missing);
-      queue.push(...newCards);
+      for (const card of newCards) {
+        if (queue.length >= targetQueuedCount) { break; }
+        if (sentIds.has(card.id)) { continue; }
+        if (queue.some((queuedCard) => queuedCard.id === card.id)) { continue; }
+        queue.push(card);
+      }
     }
 
     return queue;
@@ -347,9 +365,9 @@ export class BuilderCortex {
     const knownIds = new Set((this.cards.get(projectId) ?? []).map((card) => card.id));
     for (const card of cards) {
       if (knownIds.has(card.id)) { continue; }
+      await this.store.saveCard(card);
       knownIds.add(card.id);
       this.cards.get(projectId)?.push(card);
-      await this.store.saveCard(card);
       savedCards.push(card);
     }
     return savedCards;
