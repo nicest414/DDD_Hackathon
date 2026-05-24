@@ -47,6 +47,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
   VideoEntry? _videoEntry;
   Timer? _loadingVideoTimer;
   bool _navigatingToFinish = false;
+  late final PageController _pageController;
 
   bool get _heartActive =>
       _currentCard != null && _likedCardIds.contains(_currentCard!.id);
@@ -57,6 +58,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
   @override
   void initState() {
     super.initState();
+    _pageController = PageController();
     _wsSub = _ws.events.listen((event) {
       if (!mounted) return;
       if (event is WsCardEvent && event.card.projectId == widget.project.id) {
@@ -68,7 +70,18 @@ class _SwipeScreenState extends State<SwipeScreen> {
           _waitingForCard = false;
           _sessionErrorMessage = null;
         });
-        if (wasWaiting && !_showVideo) _audio.playRandom();
+        if (wasWaiting) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              _pageController.animateToPage(
+                _currentIndex,
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeInOut,
+              );
+            }
+          });
+          if (!_showVideo) _audio.playRandom();
+        }
       } else if (event is WsErrorEvent &&
           (event.projectId == null || event.projectId == widget.project.id)) {
         setState(() {
@@ -86,6 +99,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
 
   @override
   void dispose() {
+    _pageController.dispose();
     for (final t in _pending.values) {
       t.cancel();
     }
@@ -159,24 +173,30 @@ class _SwipeScreenState extends State<SwipeScreen> {
       if (mounted) _ws.sendDecision(decision);
     });
 
-    Future.delayed(const Duration(milliseconds: 350), () {
-      if (!mounted) return;
-      var waitingForCard = false;
-      setState(() {
-        _currentIndex++;
-        _animating = false;
-        waitingForCard = _currentCard == null;
-        _waitingForCard = waitingForCard;
-      });
-
-      if (waitingForCard) {
-        _sendPendingDecisionNow(card.id);
-        _scheduleLoadingVideo();
-      } else {
-        _maybeShowVideo();
-        if (!_showVideo) _audio.playRandom();
-      }
+    final newIndex = _currentIndex + 1;
+    final waitingForCard = newIndex >= _cards.length;
+    setState(() {
+      _currentIndex = newIndex;
+      _waitingForCard = waitingForCard;
     });
+
+    if (waitingForCard) {
+      _sendPendingDecisionNow(card.id);
+      _scheduleLoadingVideo();
+      setState(() => _animating = false);
+    } else {
+      _pageController
+          .animateToPage(
+            newIndex,
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeInOut,
+          )
+          .then((_) {
+        if (mounted) setState(() => _animating = false);
+      });
+      _maybeShowVideo();
+      if (!_showVideo) _audio.playRandom();
+    }
   }
 
   void _sendPendingDecisionNow(String cardId) {
@@ -224,6 +244,26 @@ class _SwipeScreenState extends State<SwipeScreen> {
     });
   }
 
+  void _onPageChanged(int index) {
+    if (index == _currentIndex) return;
+    if (index < _currentIndex) {
+      // PageView の縦スワイプで戻った場合: ビジネスロジックを処理
+      final card = _cards[_currentIndex - 1];
+      _pending[card.id]?.cancel();
+      _pending.remove(card.id);
+      if (!_showVideo) _audio.playRandom();
+      setState(() {
+        while (_decisions.length > index) {
+          _decisions.removeLast();
+        }
+        _currentIndex = index;
+        _waitingForCard = false;
+      });
+    } else {
+      setState(() => _currentIndex = index);
+    }
+  }
+
   void _goBack() {
     if (_animating || _currentIndex <= 0) return;
     if (!_showVideo) _audio.playRandom();
@@ -233,12 +273,18 @@ class _SwipeScreenState extends State<SwipeScreen> {
     _pending[prevCard.id]?.cancel();
     _pending.remove(prevCard.id);
 
+    final newIndex = _currentIndex - 1;
     setState(() {
-      _currentIndex--;
-      while (_decisions.length > _currentIndex) {
+      _currentIndex = newIndex;
+      while (_decisions.length > newIndex) {
         _decisions.removeLast();
       }
     });
+    _pageController.animateToPage(
+      newIndex,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeInOut,
+    );
   }
 
   @override
@@ -267,15 +313,27 @@ class _SwipeScreenState extends State<SwipeScreen> {
                   ),
                 ),
                 Expanded(
-                  child: _CardStack(
-                    cards: _cards,
-                    currentIndex: _currentIndex,
-                    heartActive: _heartActive,
-                    onAdopt: () => _decide('accepted'),
-                    onSkip: () => _decide('rejected'),
-                    onPrevious: _goBack,
-                    onHeartTap: _toggleHeart,
-                  ),
+                  child: _cards.isEmpty
+                      ? const SizedBox.shrink()
+                      : PageView.builder(
+                          controller: _pageController,
+                          scrollDirection: Axis.vertical,
+                          physics: const NeverScrollableScrollPhysics(),
+                          onPageChanged: _onPageChanged,
+                          itemCount: _cards.length,
+                          itemBuilder: (context, index) {
+                            final card = _cards[index];
+                            return ProposalCardWidget(
+                              key: ValueKey(card.id),
+                              card: card,
+                              heartActive: _likedCardIds.contains(card.id),
+                              onAdopt: () => _decide('accepted'),
+                              onSkip: () => _decide('rejected'),
+                              onPrevious: _goBack,
+                              onHeartTap: _toggleHeart,
+                            );
+                          },
+                        ),
                 ),
               ],
             ),
@@ -497,72 +555,6 @@ class _WsStatusDot extends StatelessWidget {
   }
 }
 
-class _CardStack extends StatelessWidget {
-  final List<DecisionCard> cards;
-  final int currentIndex;
-  final bool heartActive;
-  final VoidCallback onAdopt;
-  final VoidCallback onSkip;
-  final VoidCallback onPrevious;
-  final VoidCallback onHeartTap;
-
-  const _CardStack({
-    required this.cards,
-    required this.currentIndex,
-    required this.heartActive,
-    required this.onAdopt,
-    required this.onSkip,
-    required this.onPrevious,
-    required this.onHeartTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final visible = cards.skip(currentIndex).take(2).toList();
-    if (visible.isEmpty) return const SizedBox.shrink();
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final height = constraints.maxHeight;
-        return Stack(
-          children: [
-            if (visible.length > 1)
-              Positioned(
-                left: 6,
-                right: 6,
-                top: height - 64,
-                height: height,
-                child: Opacity(
-                  opacity: 0.4,
-                  child: IgnorePointer(
-                    child: ProposalCardWidget(
-                      key: ValueKey('next_${visible[1].id}'),
-                      card: visible[1],
-                      heartActive: false,
-                      onAdopt: () {},
-                      onSkip: () {},
-                      onPrevious: () {},
-                    ),
-                  ),
-                ),
-              ),
-            Positioned.fill(
-              child: ProposalCardWidget(
-                key: ValueKey(visible[0].id),
-                card: visible[0],
-                heartActive: heartActive,
-                onAdopt: onAdopt,
-                onSkip: onSkip,
-                onPrevious: onPrevious,
-                onHeartTap: onHeartTap,
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
 
 class _SideActionBar extends StatelessWidget {
   final DecisionCard card;

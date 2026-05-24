@@ -52,6 +52,7 @@ class _ProposalCardWidgetState extends State<ProposalCardWidget>
 
   void _onDragEnd(DragEndDetails _) {
     if (_dragY < -_threshold) {
+      // 上スワイプ: リセットせずそのまま → PageView のページ遷移に委ねる
       if (widget.heartActive) {
         widget.onAdopt();
       } else {
@@ -59,8 +60,11 @@ class _ProposalCardWidgetState extends State<ProposalCardWidget>
       }
     } else if (_dragY > _threshold) {
       widget.onPrevious();
+      if (mounted) setState(() => _dragY = 0);
+    } else {
+      // 閾値未満: 中央に戻す
+      if (mounted) setState(() => _dragY = 0);
     }
-    if (mounted) setState(() => _dragY = 0);
   }
 
   void _onDoubleTapDown(TapDownDetails d) {
