@@ -197,7 +197,145 @@ export class BaselineDopamine implements AIRuntimeAdapter {
         screens: [{ name: 'Home', description: '習慣一覧と今日の達成状況を表示する' }],
         features: ['習慣登録', '今日の達成チェック', '連続達成日数の表示'],
       },
-      source: '// TODO: generated source',
+      source: `import './styles.css';
+
+const storageKey = 'ddd-habit-tracker';
+const defaultHabits = [
+  { id: 'reading', name: '読書', streak: 3, doneToday: false, lastDoneDate: '' },
+  { id: 'stretch', name: 'ストレッチ', streak: 1, doneToday: true, lastDoneDate: todayKey() },
+];
+
+let habits = loadHabits();
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function createHabitId() {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  return Date.now().toString(36) + '-' + Math.random().toString(16).slice(2, 10);
+}
+
+function normalizeHabit(habit) {
+  const lastDoneDate = typeof habit.lastDoneDate === 'string'
+    ? habit.lastDoneDate
+    : habit.doneToday ? todayKey() : '';
+  return {
+    id: typeof habit.id === 'string' ? habit.id : createHabitId(),
+    name: typeof habit.name === 'string' ? habit.name : '新しい習慣',
+    streak: Number.isFinite(Number(habit.streak)) ? Number(habit.streak) : 0,
+    doneToday: lastDoneDate === todayKey(),
+    lastDoneDate,
+  };
+}
+
+function loadHabits() {
+  try {
+    const saved = localStorage.getItem(storageKey);
+    const parsed = saved ? JSON.parse(saved) : defaultHabits;
+    return Array.isArray(parsed) ? parsed.map(normalizeHabit) : defaultHabits.map(normalizeHabit);
+  } catch {
+    return defaultHabits.map(normalizeHabit);
+  }
+}
+
+function saveHabits() {
+  localStorage.setItem(storageKey, JSON.stringify(habits));
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function render() {
+  const completed = habits.filter((habit) => habit.doneToday).length;
+  document.querySelector('#app').innerHTML = \`
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Habit Tracker</p>
+        <h1>今日の習慣</h1>
+        <p class="summary">\${completed} / \${habits.length} 件を今日達成しています。</p>
+      </section>
+
+      <form class="workspace" id="habit-form">
+        <input name="name" aria-label="習慣名" placeholder="新しい習慣を入力" />
+        <button class="task-state" type="submit">追加</button>
+      </form>
+
+      <section class="workspace">
+        \${habits.map((habit) => \`
+          <article class="task \${habit.doneToday ? 'done' : ''}">
+            <span class="task-copy">
+              <strong>\${escapeHtml(habit.name)}</strong>
+              <small>連続 \${habit.streak} 日</small>
+            </span>
+            <button class="task-state" type="button" data-id="\${habit.id}">
+              \${habit.doneToday ? '達成済み' : '達成する'}
+            </button>
+          </article>
+        \`).join('')}
+      </section>
+    </main>
+  \`;
+
+}
+
+function addHabit(name) {
+  habits = [{ id: createHabitId(), name: name.trim(), streak: 0, doneToday: false, lastDoneDate: '' }, ...habits];
+  saveHabits();
+  render();
+}
+
+function toggleHabit(id) {
+  const today = todayKey();
+  habits = habits.map((habit) => {
+    if (habit.id !== id) { return habit; }
+    if (habit.doneToday) {
+      return {
+        ...habit,
+        doneToday: false,
+        lastDoneDate: '',
+        streak: habit.lastDoneDate === today ? Math.max(0, habit.streak - 1) : habit.streak,
+      };
+    }
+    return {
+      ...habit,
+      doneToday: true,
+      lastDoneDate: today,
+      streak: habit.lastDoneDate === today ? habit.streak : habit.streak + 1,
+    };
+  });
+  saveHabits();
+  render();
+}
+
+function initialize() {
+  const app = document.querySelector('#app');
+  app?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement)) { return; }
+    const name = new FormData(form).get('name');
+    if (typeof name !== 'string' || !name.trim()) { return; }
+    addHabit(name);
+  });
+
+  app?.addEventListener('click', (event) => {
+    const button = event.target instanceof Element ? event.target.closest('[data-id]') : null;
+    if (!(button instanceof HTMLElement)) { return; }
+    toggleHabit(button.dataset.id || '');
+  });
+}
+
+initialize();
+render();`,
       previewState: {},
       repositoryUrl: '',
       branchName: '',
