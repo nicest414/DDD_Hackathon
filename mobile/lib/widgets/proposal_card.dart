@@ -7,6 +7,7 @@ class ProposalCardWidget extends StatefulWidget {
   final VoidCallback onAdopt;
   final VoidCallback onSkip;
   final VoidCallback onPrevious;
+  final VoidCallback? onHeartTap;
 
   const ProposalCardWidget({
     super.key,
@@ -15,15 +16,36 @@ class ProposalCardWidget extends StatefulWidget {
     required this.onAdopt,
     required this.onSkip,
     required this.onPrevious,
+    this.onHeartTap,
   });
 
   @override
   State<ProposalCardWidget> createState() => _ProposalCardWidgetState();
 }
 
-class _ProposalCardWidgetState extends State<ProposalCardWidget> {
+class _ProposalCardWidgetState extends State<ProposalCardWidget>
+    with SingleTickerProviderStateMixin {
   double _dragY = 0;
   static const _threshold = 100.0;
+
+  late final AnimationController _heartAnim;
+  bool _heartAnimActive = false;
+  Offset _doubleTapPos = Offset.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _heartAnim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+  }
+
+  @override
+  void dispose() {
+    _heartAnim.dispose();
+    super.dispose();
+  }
 
   void _onDragUpdate(DragUpdateDetails d) =>
       setState(() => _dragY += d.delta.dy);
@@ -39,6 +61,18 @@ class _ProposalCardWidgetState extends State<ProposalCardWidget> {
       widget.onPrevious();
     }
     if (mounted) setState(() => _dragY = 0);
+  }
+
+  void _onDoubleTapDown(TapDownDetails d) {
+    _doubleTapPos = d.localPosition;
+  }
+
+  void _onDoubleTap() {
+    widget.onHeartTap?.call();
+    setState(() => _heartAnimActive = true);
+    _heartAnim.forward(from: 0).then((_) {
+      if (mounted) setState(() => _heartAnimActive = false);
+    });
   }
 
   @override
@@ -63,6 +97,8 @@ class _ProposalCardWidgetState extends State<ProposalCardWidget> {
     return GestureDetector(
       onVerticalDragUpdate: _onDragUpdate,
       onVerticalDragEnd: _onDragEnd,
+      onDoubleTapDown: _onDoubleTapDown,
+      onDoubleTap: _onDoubleTap,
       child: Transform(
         transform: Matrix4.translationValues(0, _dragY, 0),
         alignment: Alignment.center,
@@ -83,6 +119,31 @@ class _ProposalCardWidgetState extends State<ProposalCardWidget> {
                     opacity: ratio,
                   ),
                 ),
+              ),
+            if (_heartAnimActive)
+              AnimatedBuilder(
+                animation: _heartAnim,
+                builder: (context, _) {
+                  final t = _heartAnim.value;
+                  final opacity =
+                      t < 0.3 ? t / 0.3 : (1 - (t - 0.3) / 0.7);
+                  final scale = 0.5 + t * 1.5;
+                  return Positioned(
+                    left: _doubleTapPos.dx - 40,
+                    top: _doubleTapPos.dy - 40,
+                    child: Opacity(
+                      opacity: opacity.clamp(0.0, 1.0),
+                      child: Transform.scale(
+                        scale: scale,
+                        child: const Icon(
+                          Icons.favorite_rounded,
+                          color: Color(0xFFef4444),
+                          size: 80,
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
           ],
         ),
