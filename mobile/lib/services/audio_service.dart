@@ -5,6 +5,8 @@ class AudioService {
   static const _sounds = <String>[
     'sounds/rain.mp3',
     'sounds/morning.mp3',
+    'sounds/もしもし電波.mp3',
+    'sounds/2時間3分.mp3',
   ];
 
   final _player = AudioPlayer();
