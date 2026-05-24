@@ -15,10 +15,11 @@ export class ClaudeCodeAdapter extends BaseAIAdapter {
       const model = cfg.get<string>('claudeModel') ?? 'claude-haiku-4-5-20251001';
       const localBin = path.join(os.homedir(), '.local', 'bin');
       const env = { ...process.env, PATH: `${localBin}${path.delimiter}${process.env.PATH ?? ''}` };
-      const { stdout } = await execFileAsync('claude', ['-p', prompt, '--model', model], {
+      const { stdout } = await execFileAsync('claude', ['-p', '--model', model], {
         timeout: timeoutMs,
         shell: false,
         env,
+        input: prompt,
       });
       return stdout;
     } catch (err) {

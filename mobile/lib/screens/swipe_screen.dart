@@ -44,7 +44,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
   final _likedCardIds = <String>{};
   bool _waitingForCard = true;
   bool _showVideo = false;
-  String? _videoPath;
+  VideoEntry? _videoEntry;
   Timer? _loadingVideoTimer;
   bool _navigatingToFinish = false;
 
@@ -193,22 +193,34 @@ class _SwipeScreenState extends State<SwipeScreen> {
     _loadingVideoTimer = Timer(const Duration(milliseconds: 1500), () {
       _loadingVideoTimer = null;
       if (!mounted || !_waitingForCard) return;
-      final path = _video.pickRandom();
-      if (path == null) return;
+      final entry = _video.pickRandomEntry();
+      if (entry == null) return;
       setState(() {
         _showVideo = true;
-        _videoPath = path;
+        _videoEntry = entry;
       });
     });
   }
 
   void _maybeShowVideo() {
     if (_random.nextInt(5) != 0) return;
-    final path = _video.pickRandom();
-    if (path == null) return;
+    final entry = _video.pickRandomEntry();
+    if (entry == null) return;
     setState(() {
       _showVideo = true;
-      _videoPath = path;
+      _videoEntry = entry;
+    });
+  }
+
+  void _toggleHeart() {
+    final id = _currentCard?.id;
+    if (id == null) return;
+    setState(() {
+      if (_likedCardIds.contains(id)) {
+        _likedCardIds.remove(id);
+      } else {
+        _likedCardIds.add(id);
+      }
     });
   }
 
@@ -262,6 +274,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
                     onAdopt: () => _decide('accepted'),
                     onSkip: () => _decide('rejected'),
                     onPrevious: _goBack,
+                    onHeartTap: _toggleHeart,
                   ),
                 ),
               ],
@@ -286,38 +299,33 @@ class _SwipeScreenState extends State<SwipeScreen> {
                 child: _SideActionBar(
                   card: currentCard,
                   heartActive: _heartActive,
-                  onHeartTap: () => setState(() {
-                    final id = currentCard.id;
-                    if (_likedCardIds.contains(id)) {
-                      _likedCardIds.remove(id);
-                    } else {
-                      _likedCardIds.add(id);
-                    }
-                  }),
+                  onHeartTap: _toggleHeart,
                 ),
               ),
 
             // Video overlay (loading wait / random interstitial)
-            if (_showVideo && _videoPath != null)
+            if (_showVideo && _videoEntry != null)
               Positioned.fill(
                 child: VideoOverlay(
-                  key: ValueKey(_videoPath),
-                  assetPath: _videoPath!,
+                  key: ValueKey(_videoEntry!.path),
+                  assetPath: _videoEntry!.path,
+                  meta: _videoEntry!.meta,
                   onFinished: () {
                     setState(() {
                       _showVideo = false;
-                      _videoPath = null;
+                      _videoEntry = null;
                     });
                     _audio.playRandom();
                   },
                   onSwiped: () {
                     if (_waitingForCard) {
-                      final next = _video.pickRandom(exclude: _videoPath);
-                      setState(() => _videoPath = next ?? _videoPath);
+                      final next =
+                          _video.pickRandomEntry(exclude: _videoEntry!.path);
+                      setState(() => _videoEntry = next ?? _videoEntry);
                     } else {
                       setState(() {
                         _showVideo = false;
-                        _videoPath = null;
+                        _videoEntry = null;
                       });
                       _audio.playRandom();
                     }
@@ -496,6 +504,7 @@ class _CardStack extends StatelessWidget {
   final VoidCallback onAdopt;
   final VoidCallback onSkip;
   final VoidCallback onPrevious;
+  final VoidCallback onHeartTap;
 
   const _CardStack({
     required this.cards,
@@ -504,6 +513,7 @@ class _CardStack extends StatelessWidget {
     required this.onAdopt,
     required this.onSkip,
     required this.onPrevious,
+    required this.onHeartTap,
   });
 
   @override
@@ -544,6 +554,7 @@ class _CardStack extends StatelessWidget {
                 onAdopt: onAdopt,
                 onSkip: onSkip,
                 onPrevious: onPrevious,
+                onHeartTap: onHeartTap,
               ),
             ),
           ],
