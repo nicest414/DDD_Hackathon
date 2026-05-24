@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/decision_card.dart';
 
-class ProposalCardWidget extends StatefulWidget {
+class ProposalCardWidget extends StatelessWidget {
   final DecisionCard card;
   final bool heartActive;
   final VoidCallback onAdopt;
@@ -18,76 +18,8 @@ class ProposalCardWidget extends StatefulWidget {
   });
 
   @override
-  State<ProposalCardWidget> createState() => _ProposalCardWidgetState();
-}
-
-class _ProposalCardWidgetState extends State<ProposalCardWidget> {
-  double _dragY = 0;
-  static const _threshold = 100.0;
-
-  void _onDragUpdate(DragUpdateDetails d) =>
-      setState(() => _dragY += d.delta.dy);
-
-  void _onDragEnd(DragEndDetails _) {
-    if (_dragY < -_threshold) {
-      if (widget.heartActive) {
-        widget.onAdopt();
-      } else {
-        widget.onSkip();
-      }
-    } else if (_dragY > _threshold) {
-      widget.onPrevious();
-    }
-    if (mounted) setState(() => _dragY = 0);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final ratio = (_dragY.abs() / _threshold).clamp(0.0, 1.0);
-    final isUp = _dragY < 0;
-
-    final Color stampColor;
-    final String stampLabel;
-    if (isUp) {
-      stampColor = widget.heartActive
-          ? const Color(0xFF22c55e)
-          : const Color(0xFFef4444);
-      stampLabel = widget.heartActive
-          ? widget.card.acceptLabel
-          : widget.card.rejectLabel;
-    } else {
-      stampColor = const Color(0xFF64748b);
-      stampLabel = '戻る';
-    }
-
-    return GestureDetector(
-      onVerticalDragUpdate: _onDragUpdate,
-      onVerticalDragEnd: _onDragEnd,
-      child: Transform(
-        transform: Matrix4.translationValues(0, _dragY, 0),
-        alignment: Alignment.center,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            _CardBody(card: widget.card),
-            if (ratio > 0.15)
-              Positioned(
-                top: isUp ? 60 : null,
-                bottom: isUp ? null : 60,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: _Stamp(
-                    label: stampLabel,
-                    color: stampColor,
-                    opacity: ratio,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
+    return _CardBody(card: card);
   }
 }
 
@@ -368,39 +300,4 @@ _CardTypeColors _typeColors(String type) {
   };
 
   return _CardTypeColors(accent: accent, background: accent.withAlpha(35));
-}
-
-class _Stamp extends StatelessWidget {
-  final String label;
-  final Color color;
-  final double opacity;
-  const _Stamp({
-    required this.label,
-    required this.color,
-    required this.opacity,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Opacity(
-      opacity: opacity,
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border.all(color: color, width: 3),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        child: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: color,
-            fontSize: 28,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      ),
-    );
-  }
 }

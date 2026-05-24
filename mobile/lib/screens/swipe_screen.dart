@@ -35,12 +35,12 @@ class _SwipeScreenState extends State<SwipeScreen> {
   final _audio = AudioService();
   final _video = VideoService();
   final _random = Random();
+  final _pageController = PageController();
   final _decisions = <Decision>[];
   final _cards = <DecisionCard>[];
   // cardId → send timer (pending decisions not yet sent to server)
   final _pending = <String, Timer>{};
   int _currentIndex = 0;
-  bool _animating = false;
   final _likedCardIds = <String>{};
   bool _waitingForCard = true;
   bool _showVideo = false;
@@ -91,6 +91,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
     }
     _wsSub?.cancel();
     _audio.dispose();
+    _pageController.dispose();
     _loadingVideoTimer?.cancel();
     if (!_navigatingToFinish) {
       _ws.disconnect();
@@ -139,17 +140,18 @@ class _SwipeScreenState extends State<SwipeScreen> {
   DecisionCard? get _currentCard =>
       _currentIndex < _cards.length ? _cards[_currentIndex] : null;
 
-  void _decide(String action) {
-    if (_animating || _currentCard == null) return;
-    _audio.stop();
-    setState(() => _animating = true);
+  void _recordDecision(int cardIndex) {
+    if (cardIndex < 0 || cardIndex >= _cards.length) return;
+    if (_decisions.length > cardIndex) return;
 
-    final card = _currentCard!;
+    _audio.stop();
+
+    final card = _cards[cardIndex];
     final decision = Decision(
       id: const Uuid().v4(),
       projectId: widget.project.id,
       cardId: card.id,
-      action: action,
+      action: _likedCardIds.contains(card.id) ? 'accepted' : 'rejected',
     );
     _decisions.add(decision);
 
@@ -158,25 +160,34 @@ class _SwipeScreenState extends State<SwipeScreen> {
       _pending.remove(card.id);
       if (mounted) _ws.sendDecision(decision);
     });
+  }
 
-    Future.delayed(const Duration(milliseconds: 350), () {
-      if (!mounted) return;
-      var waitingForCard = false;
+  void _handlePageChanged(int nextIndex) {
+    if (nextIndex == _currentIndex) return;
+
+    if (nextIndex > _currentIndex) {
+      final previousIndex = _currentIndex;
+      for (var i = _currentIndex; i < nextIndex && i < _cards.length; i++) {
+        _recordDecision(i);
+      }
+
+      final waitingForCard = nextIndex >= _cards.length;
       setState(() {
-        _currentIndex++;
-        _animating = false;
-        waitingForCard = _currentCard == null;
+        _currentIndex = nextIndex;
         _waitingForCard = waitingForCard;
       });
 
-      if (waitingForCard) {
-        _sendPendingDecisionNow(card.id);
+      if (waitingForCard && previousIndex < _cards.length) {
+        _sendPendingDecisionNow(_cards[previousIndex].id);
         _scheduleLoadingVideo();
       } else {
         _maybeShowVideo();
         if (!_showVideo) _audio.playRandom();
       }
-    });
+      return;
+    }
+
+    _goBackTo(nextIndex);
   }
 
   void _sendPendingDecisionNow(String cardId) {
@@ -212,17 +223,18 @@ class _SwipeScreenState extends State<SwipeScreen> {
     });
   }
 
-  void _goBack() {
-    if (_animating || _currentIndex <= 0) return;
+  void _goBackTo(int index) {
+    if (index < 0 || index >= _currentIndex) return;
     if (!_showVideo) _audio.playRandom();
 
-    // 戻るカードの送信待ちタイマーをキャンセルして重複送信を防ぐ
-    final prevCard = _cards[_currentIndex - 1];
-    _pending[prevCard.id]?.cancel();
-    _pending.remove(prevCard.id);
+    for (var i = index; i < _currentIndex && i < _cards.length; i++) {
+      _pending[_cards[i].id]?.cancel();
+      _pending.remove(_cards[i].id);
+    }
 
     setState(() {
-      _currentIndex--;
+      _currentIndex = index;
+      _waitingForCard = _currentCard == null;
       while (_decisions.length > _currentIndex) {
         _decisions.removeLast();
       }
@@ -259,9 +271,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
                     cards: _cards,
                     currentIndex: _currentIndex,
                     heartActive: _heartActive,
-                    onAdopt: () => _decide('accepted'),
-                    onSkip: () => _decide('rejected'),
-                    onPrevious: _goBack,
+                    waitingForCard: _waitingForCard,
+                    pageController: _pageController,
+                    onPageChanged: _handlePageChanged,
                   ),
                 ),
               ],
@@ -493,60 +505,42 @@ class _CardStack extends StatelessWidget {
   final List<DecisionCard> cards;
   final int currentIndex;
   final bool heartActive;
-  final VoidCallback onAdopt;
-  final VoidCallback onSkip;
-  final VoidCallback onPrevious;
+  final bool waitingForCard;
+  final PageController pageController;
+  final ValueChanged<int> onPageChanged;
 
   const _CardStack({
     required this.cards,
     required this.currentIndex,
     required this.heartActive,
-    required this.onAdopt,
-    required this.onSkip,
-    required this.onPrevious,
+    required this.waitingForCard,
+    required this.pageController,
+    required this.onPageChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    final visible = cards.skip(currentIndex).take(2).toList();
-    if (visible.isEmpty) return const SizedBox.shrink();
+    final itemCount = cards.length + (waitingForCard ? 1 : 0);
+    if (itemCount == 0) return const SizedBox.shrink();
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final height = constraints.maxHeight;
-        return Stack(
-          children: [
-            if (visible.length > 1)
-              Positioned(
-                left: 6,
-                right: 6,
-                top: height - 64,
-                height: height,
-                child: Opacity(
-                  opacity: 0.4,
-                  child: IgnorePointer(
-                    child: ProposalCardWidget(
-                      key: ValueKey('next_${visible[1].id}'),
-                      card: visible[1],
-                      heartActive: false,
-                      onAdopt: () {},
-                      onSkip: () {},
-                      onPrevious: () {},
-                    ),
-                  ),
-                ),
-              ),
-            Positioned.fill(
-              child: ProposalCardWidget(
-                key: ValueKey(visible[0].id),
-                card: visible[0],
-                heartActive: heartActive,
-                onAdopt: onAdopt,
-                onSkip: onSkip,
-                onPrevious: onPrevious,
-              ),
-            ),
-          ],
+    return PageView.builder(
+      controller: pageController,
+      scrollDirection: Axis.vertical,
+      itemCount: itemCount,
+      onPageChanged: onPageChanged,
+      itemBuilder: (context, index) {
+        if (index >= cards.length) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 72),
+          child: ProposalCardWidget(
+            key: ValueKey(cards[index].id),
+            card: cards[index],
+            heartActive: index == currentIndex && heartActive,
+            onAdopt: () {},
+            onSkip: () {},
+            onPrevious: () {},
+          ),
         );
       },
     );

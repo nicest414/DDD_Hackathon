@@ -40,6 +40,29 @@ void main() {
     ),
   );
 
+  Widget callbackTestBed({
+    required DecisionCard card,
+    required VoidCallback onAdopt,
+    required VoidCallback onSkip,
+    required VoidCallback onPrevious,
+  }) => MaterialApp(
+    home: Scaffold(
+      body: Center(
+        child: SizedBox(
+          width: 360,
+          height: 700,
+          child: ProposalCardWidget(
+            card: card,
+            heartActive: true,
+            onAdopt: onAdopt,
+            onSkip: onSkip,
+            onPrevious: onPrevious,
+          ),
+        ),
+      ),
+    ),
+  );
+
   testWidgets('renders the main DecisionCard fields', (tester) async {
     await tester.pumpWidget(testBed(card()));
 
@@ -63,5 +86,29 @@ void main() {
     await tester.pumpWidget(testBed(card(description: longDescription)));
 
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('vertical drags are reserved for the surrounding page view', (
+    tester,
+  ) async {
+    var adoptCount = 0;
+    var skipCount = 0;
+    var previousCount = 0;
+
+    await tester.pumpWidget(
+      callbackTestBed(
+        card: card(),
+        onAdopt: () => adoptCount++,
+        onSkip: () => skipCount++,
+        onPrevious: () => previousCount++,
+      ),
+    );
+
+    await tester.drag(find.byType(ProposalCardWidget), const Offset(0, -160));
+    await tester.pump();
+
+    expect(adoptCount, 0);
+    expect(skipCount, 0);
+    expect(previousCount, 0);
   });
 }
