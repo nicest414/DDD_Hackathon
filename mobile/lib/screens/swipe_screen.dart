@@ -306,17 +306,6 @@ class _SwipeScreenState extends State<SwipeScreen> {
                 ),
               ),
 
-            if (_waitingForCard &&
-                _feedItems.isNotEmpty &&
-                _connectionMessage == null &&
-                _sessionErrorMessage == null)
-              const Positioned(
-                left: 0,
-                right: 0,
-                top: 56,
-                child: IgnorePointer(child: _GeneratingBadge()),
-              ),
-
             // TikTok-style right action bar
             if (currentCard != null)
               Positioned(
@@ -357,48 +346,6 @@ class _SwipeScreenState extends State<SwipeScreen> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _GeneratingBadge extends StatelessWidget {
-  const _GeneratingBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.black.withAlpha(150),
-          border: Border.all(color: Colors.white.withAlpha(50)),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFc4b5fd)),
-                ),
-              ),
-              SizedBox(width: 8),
-              Text(
-                '生成中...',
-                style: TextStyle(
-                  color: Color(0xFFf8fafc),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
