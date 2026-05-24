@@ -9,7 +9,7 @@ import { DecisionStore } from './decisionStore';
 import { safePathToken } from './pathUtils';
 import { DDD_GENERATED_APPS_DIR } from './githubPublisher';
 
-const CARD_BATCH_SIZE = 10;
+const CARD_BATCH_SIZE = 3;
 const CARD_QUEUE_REFILL_THRESHOLD = 3;
 
 export class BuilderCortex {
