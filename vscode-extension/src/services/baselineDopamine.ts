@@ -201,18 +201,43 @@ export class BaselineDopamine implements AIRuntimeAdapter {
 
 const storageKey = 'ddd-habit-tracker';
 const defaultHabits = [
-  { id: 'reading', name: '読書', streak: 3, doneToday: false },
-  { id: 'stretch', name: 'ストレッチ', streak: 1, doneToday: true },
+  { id: 'reading', name: '読書', streak: 3, doneToday: false, lastDoneDate: '' },
+  { id: 'stretch', name: 'ストレッチ', streak: 1, doneToday: true, lastDoneDate: todayKey() },
 ];
 
 let habits = loadHabits();
 
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function createHabitId() {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  return Date.now().toString(36) + '-' + Math.random().toString(16).slice(2, 10);
+}
+
+function normalizeHabit(habit) {
+  const lastDoneDate = typeof habit.lastDoneDate === 'string'
+    ? habit.lastDoneDate
+    : habit.doneToday ? todayKey() : '';
+  return {
+    id: typeof habit.id === 'string' ? habit.id : createHabitId(),
+    name: typeof habit.name === 'string' ? habit.name : '新しい習慣',
+    streak: Number.isFinite(Number(habit.streak)) ? Number(habit.streak) : 0,
+    doneToday: lastDoneDate === todayKey(),
+    lastDoneDate,
+  };
+}
+
 function loadHabits() {
   try {
     const saved = localStorage.getItem(storageKey);
-    return saved ? JSON.parse(saved) : defaultHabits;
+    const parsed = saved ? JSON.parse(saved) : defaultHabits;
+    return Array.isArray(parsed) ? parsed.map(normalizeHabit) : defaultHabits.map(normalizeHabit);
   } catch {
-    return defaultHabits;
+    return defaultHabits.map(normalizeHabit);
   }
 }
 
@@ -260,27 +285,56 @@ function render() {
     </main>
   \`;
 
-  document.querySelector('#habit-form')?.addEventListener('submit', (event) => {
+}
+
+function addHabit(name) {
+  habits = [{ id: createHabitId(), name: name.trim(), streak: 0, doneToday: false, lastDoneDate: '' }, ...habits];
+  saveHabits();
+  render();
+}
+
+function toggleHabit(id) {
+  const today = todayKey();
+  habits = habits.map((habit) => {
+    if (habit.id !== id) { return habit; }
+    if (habit.doneToday) {
+      return {
+        ...habit,
+        doneToday: false,
+        lastDoneDate: '',
+        streak: habit.lastDoneDate === today ? Math.max(0, habit.streak - 1) : habit.streak,
+      };
+    }
+    return {
+      ...habit,
+      doneToday: true,
+      lastDoneDate: today,
+      streak: habit.lastDoneDate === today ? habit.streak : habit.streak + 1,
+    };
+  });
+  saveHabits();
+  render();
+}
+
+function initialize() {
+  const app = document.querySelector('#app');
+  app?.addEventListener('submit', (event) => {
     event.preventDefault();
-    const form = event.currentTarget;
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement)) { return; }
     const name = new FormData(form).get('name');
     if (typeof name !== 'string' || !name.trim()) { return; }
-    habits = [{ id: crypto.randomUUID(), name: name.trim(), streak: 0, doneToday: false }, ...habits];
-    saveHabits();
-    render();
+    addHabit(name);
   });
 
-  document.querySelectorAll('[data-id]').forEach((button) => {
-    button.addEventListener('click', () => {
-      habits = habits.map((habit) => habit.id === button.dataset.id
-        ? { ...habit, doneToday: !habit.doneToday, streak: habit.doneToday ? Math.max(0, habit.streak - 1) : habit.streak + 1 }
-        : habit);
-      saveHabits();
-      render();
-    });
+  app?.addEventListener('click', (event) => {
+    const button = event.target instanceof Element ? event.target.closest('[data-id]') : null;
+    if (!(button instanceof HTMLElement)) { return; }
+    toggleHabit(button.dataset.id || '');
   });
 }
 
+initialize();
 render();`,
       previewState: {},
       repositoryUrl: '',
