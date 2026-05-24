@@ -14,6 +14,8 @@ class VideoEntry {
   const VideoEntry({required this.path, required this.meta});
 }
 
+
+
 class VideoService {
   static const _entries = <VideoEntry>[
     VideoEntry(
@@ -34,7 +36,7 @@ class VideoService {
       path: 'assets/videos/ad1dc989536f4223bb99b9dd4e25bee6.mp4',
       meta: VideoMeta(
         username: '@vscode_life',
-        description: 'AIがコードを書く時代。でもアイデアはあなたが出す ✨ #ai #coding',
+        description: 'AIがコードを書く時代,でもアイデアはあなたが出す ✨ #ai #coding',
       ),
     ),
   ];
