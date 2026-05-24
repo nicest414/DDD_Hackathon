@@ -133,6 +133,23 @@ export class BaselineDopamine implements AIRuntimeAdapter {
         summary: '毎日の習慣を登録し、達成状況を記録するミニアプリ',
         screens: [{ name: 'Home', description: '習慣一覧と今日の達成状況を表示する' }],
         features: ['習慣登録', '今日の達成チェック', '連続達成日数の表示'],
+        blueprint: {
+          entityName: '習慣',
+          itemName: '習慣',
+          emptyMessage: '習慣を追加するとここに表示されます。',
+          fields: [
+            { key: 'name', label: '習慣名', type: 'text', placeholder: '例: 水を飲む', required: true },
+            { key: 'target', label: '目標回数', type: 'number', placeholder: '1', required: true },
+            { key: 'pattern', label: 'パターン', type: 'select', options: ['毎日', '平日だけ', '週3回', '曜日を選ぶ'] },
+          ],
+          seedItems: [
+            { name: '朝のストレッチ', target: 1, pattern: '毎日' },
+            { name: '英単語レビュー', target: 3, pattern: '平日だけ' },
+          ],
+          statuses: ['active', 'done'],
+          primaryActionLabel: '保存',
+          secondaryActionLabel: '記録',
+        },
       },
       source: '// TODO: generated source',
       previewState: {},

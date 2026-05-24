@@ -349,6 +349,9 @@ export class BuilderCortex {
       summary: typeof spec['summary'] === 'string' && spec['summary'] ? spec['summary'] : project.initialPrompt,
       screens: Array.isArray(spec['screens']) ? spec['screens'] : [],
       features: Array.isArray(spec['features']) ? spec['features'] : [],
+      blueprint: spec['blueprint'] && typeof spec['blueprint'] === 'object' && !Array.isArray(spec['blueprint'])
+        ? spec['blueprint']
+        : undefined,
     };
   }
 

@@ -237,10 +237,17 @@ export abstract class BaseAIAdapter implements AIRuntimeAdapter {
 
   async generateApp(project: Project, accepted: DecisionCard[]): Promise<GeneratedApp> {
     const prompt =
-      `Generate a minimal runnable browser app spec for: "${project.title}"\n` +
+      `Generate a minimal runnable browser app blueprint for: "${project.title}"\n` +
       `Using these accepted features:\n${accepted.map((c) => `- ${c.title}: ${c.description} (payoff: ${c.payoff})`).join('\n') || 'none'}\n\n` +
-      `Return JSON (no markdown). Describe the actual interactive app behavior, not a specification document page:\n` +
-      `{"name":"...","summary":"...","screens":[{"name":"...","description":"..."}],"features":["..."]}`;
+      `Return JSON only. Do not make the accepted features into user data rows.\n` +
+      `First design the app's data model and interactions, then encode that design in "blueprint".\n` +
+      `The generated app will be built from this blueprint, so fields and actions must describe real user operations.\n` +
+      `Schema:\n` +
+      `{"name":"...","summary":"...","screens":[{"name":"...","description":"..."}],"features":["..."],` +
+      `"blueprint":{"entityName":"...","itemName":"...","emptyMessage":"...",` +
+      `"fields":[{"key":"...","label":"...","type":"text|number|date|select|checkbox","placeholder":"...","required":true,"options":["..."]}],` +
+      `"seedItems":[{"fieldKey":"value"}],` +
+      `"statuses":["active","review","done"],"primaryActionLabel":"追加","secondaryActionLabel":"状態変更"}}`;
 
     const text = await this.callAI(prompt);
     const spec = this.parseJson(text);
