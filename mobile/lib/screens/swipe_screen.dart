@@ -38,13 +38,12 @@ class _SwipeScreenState extends State<SwipeScreen> {
   final _pageController = PageController();
   final _decisions = <Decision>[];
   final _cards = <DecisionCard>[];
+  final _feedItems = <_FeedItem>[];
   // cardId → send timer (pending decisions not yet sent to server)
   final _pending = <String, Timer>{};
-  int _currentIndex = 0;
+  int _currentFeedIndex = 0;
   final _likedCardIds = <String>{};
   bool _waitingForCard = true;
-  bool _showVideo = false;
-  String? _videoPath;
   Timer? _loadingVideoTimer;
   bool _navigatingToFinish = false;
 
@@ -65,10 +64,13 @@ class _SwipeScreenState extends State<SwipeScreen> {
         final wasWaiting = _waitingForCard;
         setState(() {
           _cards.add(event.card);
+          final videoPath = _pickInterstitialVideo();
+          if (videoPath != null) _feedItems.add(_FeedItem.video(videoPath));
+          _feedItems.add(_FeedItem.card(event.card));
           _waitingForCard = false;
           _sessionErrorMessage = null;
         });
-        if (wasWaiting && !_showVideo) _audio.playRandom();
+        if (wasWaiting) _audio.playRandom();
       } else if (event is WsErrorEvent &&
           (event.projectId == null || event.projectId == widget.project.id)) {
         setState(() {
@@ -137,16 +139,15 @@ class _SwipeScreenState extends State<SwipeScreen> {
     }
   }
 
-  DecisionCard? get _currentCard =>
-      _currentIndex < _cards.length ? _cards[_currentIndex] : null;
+  DecisionCard? get _currentCard => _currentFeedIndex < _feedItems.length
+      ? _feedItems[_currentFeedIndex].card
+      : null;
 
-  void _recordDecision(int cardIndex) {
-    if (cardIndex < 0 || cardIndex >= _cards.length) return;
-    if (_decisions.length > cardIndex) return;
+  void _recordDecision(DecisionCard card) {
+    if (_decisions.any((d) => d.cardId == card.id)) return;
 
     _audio.stop();
 
-    final card = _cards[cardIndex];
     final decision = Decision(
       id: const Uuid().v4(),
       projectId: widget.project.id,
@@ -163,26 +164,35 @@ class _SwipeScreenState extends State<SwipeScreen> {
   }
 
   void _handlePageChanged(int nextIndex) {
-    if (nextIndex == _currentIndex) return;
+    if (nextIndex == _currentFeedIndex) return;
 
-    if (nextIndex > _currentIndex) {
-      final previousIndex = _currentIndex;
-      for (var i = _currentIndex; i < nextIndex && i < _cards.length; i++) {
-        _recordDecision(i);
+    if (nextIndex > _currentFeedIndex) {
+      final previousIndex = _currentFeedIndex;
+      for (
+        var i = _currentFeedIndex;
+        i < nextIndex && i < _feedItems.length;
+        i++
+      ) {
+        final card = _feedItems[i].card;
+        if (card != null) _recordDecision(card);
       }
 
-      final waitingForCard = nextIndex >= _cards.length;
+      final waitingForCard = nextIndex >= _feedItems.length;
       setState(() {
-        _currentIndex = nextIndex;
+        _currentFeedIndex = nextIndex;
         _waitingForCard = waitingForCard;
       });
 
-      if (waitingForCard && previousIndex < _cards.length) {
-        _sendPendingDecisionNow(_cards[previousIndex].id);
+      final previousCard = previousIndex < _feedItems.length
+          ? _feedItems[previousIndex].card
+          : null;
+      if (waitingForCard) {
+        if (previousCard != null) {
+          _sendPendingDecisionNow(previousCard.id);
+        }
         _scheduleLoadingVideo();
       } else {
-        _maybeShowVideo();
-        if (!_showVideo) _audio.playRandom();
+        _audio.playRandom();
       }
       return;
     }
@@ -207,44 +217,49 @@ class _SwipeScreenState extends State<SwipeScreen> {
       final path = _video.pickRandom();
       if (path == null) return;
       setState(() {
-        _showVideo = true;
-        _videoPath = path;
+        _feedItems.add(_FeedItem.video(path));
       });
     });
   }
 
-  void _maybeShowVideo() {
-    if (_random.nextInt(5) != 0) return;
-    final path = _video.pickRandom();
-    if (path == null) return;
-    setState(() {
-      _showVideo = true;
-      _videoPath = path;
-    });
+  String? _pickInterstitialVideo() {
+    if (_feedItems.isEmpty || !VideoService.hasVideos) return null;
+    if (_random.nextInt(5) != 0) return null;
+
+    String? previousVideo;
+    for (final item in _feedItems.reversed) {
+      if (item.videoPath == null) continue;
+      previousVideo = item.videoPath;
+      break;
+    }
+    return _video.pickRandom(exclude: previousVideo);
   }
 
   void _goBackTo(int index) {
-    if (index < 0 || index >= _currentIndex) return;
-    if (!_showVideo) _audio.playRandom();
+    if (index < 0 || index >= _currentFeedIndex) return;
+    _audio.playRandom();
 
-    for (var i = index; i < _currentIndex && i < _cards.length; i++) {
-      _pending[_cards[i].id]?.cancel();
-      _pending.remove(_cards[i].id);
+    final restoredCardIds = <String>{};
+    for (var i = index; i < _currentFeedIndex && i < _feedItems.length; i++) {
+      final card = _feedItems[i].card;
+      if (card == null) continue;
+      restoredCardIds.add(card.id);
+      _pending[card.id]?.cancel();
+      _pending.remove(card.id);
     }
 
     setState(() {
-      _currentIndex = index;
+      _currentFeedIndex = index;
       _waitingForCard = _currentCard == null;
-      while (_decisions.length > _currentIndex) {
-        _decisions.removeLast();
-      }
+      _decisions.removeWhere((d) => restoredCardIds.contains(d.cardId));
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final total = _cards.length;
-    final displayIndex = total > 0 ? _currentIndex.clamp(0, total - 1) : 0;
+    final cardIndex = _currentCard == null ? -1 : _cards.indexOf(_currentCard!);
+    final displayIndex = total > 0 ? cardIndex.clamp(0, total - 1) : 0;
     final progress = total > 0 ? (displayIndex + 1) / total : 0.0;
     final currentCard = _currentCard;
 
@@ -268,8 +283,8 @@ class _SwipeScreenState extends State<SwipeScreen> {
                 ),
                 Expanded(
                   child: _CardStack(
-                    cards: _cards,
-                    currentIndex: _currentIndex,
+                    feedItems: _feedItems,
+                    currentFeedIndex: _currentFeedIndex,
                     heartActive: _heartActive,
                     waitingForCard: _waitingForCard,
                     pageController: _pageController,
@@ -279,8 +294,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
               ],
             ),
 
-            // Wait / error overlay
-            if (currentCard == null)
+            // Error overlay
+            if (currentCard == null &&
+                (_connectionMessage != null || _sessionErrorMessage != null))
               Positioned.fill(
                 child: _CardWaitState(
                   waitingForCard: _waitingForCard,
@@ -309,33 +325,6 @@ class _SwipeScreenState extends State<SwipeScreen> {
                 ),
               ),
 
-            // Video overlay (loading wait / random interstitial)
-            if (_showVideo && _videoPath != null)
-              Positioned.fill(
-                child: VideoOverlay(
-                  key: ValueKey(_videoPath),
-                  assetPath: _videoPath!,
-                  onFinished: () {
-                    setState(() {
-                      _showVideo = false;
-                      _videoPath = null;
-                    });
-                    _audio.playRandom();
-                  },
-                  onSwiped: () {
-                    if (_waitingForCard) {
-                      final next = _video.pickRandom(exclude: _videoPath);
-                      setState(() => _videoPath = next ?? _videoPath);
-                    } else {
-                      setState(() {
-                        _showVideo = false;
-                        _videoPath = null;
-                      });
-                      _audio.playRandom();
-                    }
-                  },
-                ),
-              ),
             // Finish button
             Positioned(
               left: 20,
@@ -502,16 +491,16 @@ class _WsStatusDot extends StatelessWidget {
 }
 
 class _CardStack extends StatelessWidget {
-  final List<DecisionCard> cards;
-  final int currentIndex;
+  final List<_FeedItem> feedItems;
+  final int currentFeedIndex;
   final bool heartActive;
   final bool waitingForCard;
   final PageController pageController;
   final ValueChanged<int> onPageChanged;
 
   const _CardStack({
-    required this.cards,
-    required this.currentIndex,
+    required this.feedItems,
+    required this.currentFeedIndex,
     required this.heartActive,
     required this.waitingForCard,
     required this.pageController,
@@ -520,7 +509,7 @@ class _CardStack extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final itemCount = cards.length + (waitingForCard ? 1 : 0);
+    final itemCount = feedItems.length + (waitingForCard ? 1 : 0);
     if (itemCount == 0) return const SizedBox.shrink();
 
     return PageView.builder(
@@ -529,22 +518,51 @@ class _CardStack extends StatelessWidget {
       itemCount: itemCount,
       onPageChanged: onPageChanged,
       itemBuilder: (context, index) {
-        if (index >= cards.length) return const SizedBox.shrink();
+        if (index >= feedItems.length) {
+          return _CardWaitState(
+            waitingForCard: waitingForCard,
+            connectionMessage: null,
+            sessionErrorMessage: null,
+            onRetry: null,
+          );
+        }
+
+        final item = feedItems[index];
+        final card = item.card;
+        if (card != null) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 72),
+            child: ProposalCardWidget(
+              key: ValueKey(card.id),
+              card: card,
+              heartActive: index == currentFeedIndex && heartActive,
+              onAdopt: () {},
+              onSkip: () {},
+              onPrevious: () {},
+            ),
+          );
+        }
 
         return Padding(
           padding: const EdgeInsets.only(bottom: 72),
-          child: ProposalCardWidget(
-            key: ValueKey(cards[index].id),
-            card: cards[index],
-            heartActive: index == currentIndex && heartActive,
-            onAdopt: () {},
-            onSkip: () {},
-            onPrevious: () {},
+          child: VideoOverlay(
+            key: ValueKey(item.videoPath),
+            assetPath: item.videoPath!,
+            enableVerticalSwipeDismiss: false,
+            onFinished: () {},
           ),
         );
       },
     );
   }
+}
+
+class _FeedItem {
+  final DecisionCard? card;
+  final String? videoPath;
+
+  const _FeedItem.card(this.card) : videoPath = null;
+  const _FeedItem.video(this.videoPath) : card = null;
 }
 
 class _SideActionBar extends StatelessWidget {

@@ -5,12 +5,14 @@ class VideoOverlay extends StatefulWidget {
   final String assetPath;
   final VoidCallback onFinished;
   final VoidCallback? onSwiped;
+  final bool enableVerticalSwipeDismiss;
 
   const VideoOverlay({
     super.key,
     required this.assetPath,
     required this.onFinished,
     this.onSwiped,
+    this.enableVerticalSwipeDismiss = true,
   });
 
   @override
@@ -27,14 +29,17 @@ class _VideoOverlayState extends State<VideoOverlay> {
   void initState() {
     super.initState();
     _controller = VideoPlayerController.asset(widget.assetPath);
-    _controller.initialize().then((_) {
-      if (!mounted) return;
-      _controller.setLooping(true);
-      setState(() => _initialized = true);
-      _controller.play();
-    }).catchError((_) {
-      if (mounted) widget.onFinished();
-    });
+    _controller
+        .initialize()
+        .then((_) {
+          if (!mounted) return;
+          _controller.setLooping(true);
+          setState(() => _initialized = true);
+          _controller.play();
+        })
+        .catchError((_) {
+          if (mounted) widget.onFinished();
+        });
   }
 
   @override
@@ -51,16 +56,19 @@ class _VideoOverlayState extends State<VideoOverlay> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onDoubleTap: () => setState(() => _heartActive = !_heartActive),
-      onVerticalDragUpdate: (d) =>
-          setState(() => _dragOffsetY += d.delta.dy),
-      onVerticalDragEnd: (d) {
-        if (_dragOffsetY.abs() > screenHeight * 0.25 ||
-            (d.primaryVelocity ?? 0).abs() > 500) {
-          (widget.onSwiped ?? widget.onFinished)();
-        } else {
-          setState(() => _dragOffsetY = 0);
-        }
-      },
+      onVerticalDragUpdate: widget.enableVerticalSwipeDismiss
+          ? (d) => setState(() => _dragOffsetY += d.delta.dy)
+          : null,
+      onVerticalDragEnd: widget.enableVerticalSwipeDismiss
+          ? (d) {
+              if (_dragOffsetY.abs() > screenHeight * 0.25 ||
+                  (d.primaryVelocity ?? 0).abs() > 500) {
+                (widget.onSwiped ?? widget.onFinished)();
+              } else {
+                setState(() => _dragOffsetY = 0);
+              }
+            }
+          : null,
       child: Transform.translate(
         offset: Offset(0, _dragOffsetY),
         child: Stack(
@@ -94,11 +102,7 @@ class _VideoOverlayState extends State<VideoOverlay> {
                       width: 1.5,
                     ),
                   ),
-                  child: Icon(
-                    Icons.favorite_rounded,
-                    color: color,
-                    size: 26,
-                  ),
+                  child: Icon(Icons.favorite_rounded, color: color, size: 26),
                 ),
               ),
             ),
