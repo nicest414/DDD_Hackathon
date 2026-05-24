@@ -53,9 +53,10 @@ export class GitHubPublisher {
       await fs.mkdir(projectDir, { recursive: true });
       await fs.writeFile(specPath, JSON.stringify(app.spec, null, 2));
       await fs.writeFile(decisionsPath, JSON.stringify(decisions, null, 2));
+      await this._writeGeneratedApp(app, decisions, path.join(projectDir, 'generated-app'));
 
-      await execFileAsync('git', ['add', specPath, decisionsPath], { cwd: repoPath, timeout: GIT_TIMEOUT_MS, shell: false });
-      const hasStagedChanges = await this._hasStagedChanges(repoPath, [specPath, decisionsPath]);
+      await execFileAsync('git', ['add', projectDir], { cwd: repoPath, timeout: GIT_TIMEOUT_MS, shell: false });
+      const hasStagedChanges = await this._hasStagedChanges(repoPath, [projectDir]);
       if (hasStagedChanges) {
         await execFileAsync('git', ['commit', '-m', 'chore: DDD generated app'], { cwd: repoPath, timeout: GIT_TIMEOUT_MS, shell: false });
       }
@@ -205,6 +206,11 @@ export class GitHubPublisher {
   }
 
   private _mainJs(app: GeneratedApp, _decisions: Decision[]): string {
+    const source = app.source.trim();
+    if (source && !source.includes('TODO: code generation') && !source.includes('TODO: generated source')) {
+      return `${source.includes("import './styles.css'") || source.includes('import "./styles.css"') ? '' : "import './styles.css';\n"}${source}\n`;
+    }
+
     return `import './styles.css';
 import appSpec from '../../ddd-spec.json';
 

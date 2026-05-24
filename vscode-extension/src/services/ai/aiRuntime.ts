@@ -337,19 +337,28 @@ export abstract class BaseAIAdapter implements AIRuntimeAdapter {
 
   async generateApp(project: Project, accepted: DecisionCard[]): Promise<GeneratedApp> {
     const prompt =
-      `Generate a minimal runnable browser app spec for: "${project.title}"\n` +
-      `Using these accepted features:\n${accepted.map((c) => `- ${c.title}: ${c.description} (payoff: ${c.payoff})`).join('\n') || 'none'}\n\n` +
-      `Return JSON (no markdown). Describe the actual interactive app behavior, not a specification document page:\n` +
-      `{"name":"...","summary":"...","screens":[{"name":"...","description":"..."}],"features":["..."]}`;
+      `Build a minimal runnable browser app named "${project.title}".\n` +
+      `Initial user request: "${project.initialPrompt}"\n` +
+      `Accepted product decisions:\n${accepted.map((c) => `- ${c.title}: ${c.description} (payoff: ${c.payoff})`).join('\n') || '- none'}\n\n` +
+      `Return only one JSON object. Do not use markdown or code fences.\n` +
+      `The response must include both a compact product spec and the actual JavaScript implementation for generated-app/src/main.js.\n` +
+      `Do not create a generic TODO/checklist/progress tracker unless the user explicitly asked for one.\n` +
+      `Implement the requested domain directly with real controls, state, sample initial data, validation, user-visible feedback, and localStorage persistence when useful.\n` +
+      `The JavaScript must be self-contained browser code, import "./styles.css", use no external packages, and render into document.querySelector("#app").\n` +
+      `Use this exact JSON shape:\n` +
+      `{"spec":{"name":"user-facing app name","summary":"one short in-app value statement","screens":[{"name":"actual screen label","description":"implemented UI behavior"}],"features":["implemented user-facing capability"]},"source":"full contents of src/main.js as a JavaScript string"}`;
 
     const text = await this.callAI(prompt);
-    const spec = this.parseJson(text);
+    const parsed = this.parseJson(text);
+    const spec = parsed['spec'] && typeof parsed['spec'] === 'object' && !Array.isArray(parsed['spec'])
+      ? parsed['spec'] as Record<string, unknown>
+      : parsed;
 
     return {
       id: `app-${project.id}`,
       projectId: project.id,
       spec,
-      source: '// TODO: code generation',
+      source: requiredString(parsed['source'], 'source'),
       previewState: {},
       repositoryUrl: '',
       branchName: '',

@@ -197,7 +197,91 @@ export class BaselineDopamine implements AIRuntimeAdapter {
         screens: [{ name: 'Home', description: '習慣一覧と今日の達成状況を表示する' }],
         features: ['習慣登録', '今日の達成チェック', '連続達成日数の表示'],
       },
-      source: '// TODO: generated source',
+      source: `import './styles.css';
+
+const storageKey = 'ddd-habit-tracker';
+const defaultHabits = [
+  { id: 'reading', name: '読書', streak: 3, doneToday: false },
+  { id: 'stretch', name: 'ストレッチ', streak: 1, doneToday: true },
+];
+
+let habits = loadHabits();
+
+function loadHabits() {
+  try {
+    const saved = localStorage.getItem(storageKey);
+    return saved ? JSON.parse(saved) : defaultHabits;
+  } catch {
+    return defaultHabits;
+  }
+}
+
+function saveHabits() {
+  localStorage.setItem(storageKey, JSON.stringify(habits));
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function render() {
+  const completed = habits.filter((habit) => habit.doneToday).length;
+  document.querySelector('#app').innerHTML = \`
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Habit Tracker</p>
+        <h1>今日の習慣</h1>
+        <p class="summary">\${completed} / \${habits.length} 件を今日達成しています。</p>
+      </section>
+
+      <form class="workspace" id="habit-form">
+        <input name="name" aria-label="習慣名" placeholder="新しい習慣を入力" />
+        <button class="task-state" type="submit">追加</button>
+      </form>
+
+      <section class="workspace">
+        \${habits.map((habit) => \`
+          <article class="task \${habit.doneToday ? 'done' : ''}">
+            <span class="task-copy">
+              <strong>\${escapeHtml(habit.name)}</strong>
+              <small>連続 \${habit.streak} 日</small>
+            </span>
+            <button class="task-state" type="button" data-id="\${habit.id}">
+              \${habit.doneToday ? '達成済み' : '達成する'}
+            </button>
+          </article>
+        \`).join('')}
+      </section>
+    </main>
+  \`;
+
+  document.querySelector('#habit-form')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const name = new FormData(form).get('name');
+    if (typeof name !== 'string' || !name.trim()) { return; }
+    habits = [{ id: crypto.randomUUID(), name: name.trim(), streak: 0, doneToday: false }, ...habits];
+    saveHabits();
+    render();
+  });
+
+  document.querySelectorAll('[data-id]').forEach((button) => {
+    button.addEventListener('click', () => {
+      habits = habits.map((habit) => habit.id === button.dataset.id
+        ? { ...habit, doneToday: !habit.doneToday, streak: habit.doneToday ? Math.max(0, habit.streak - 1) : habit.streak + 1 }
+        : habit);
+      saveHabits();
+      render();
+    });
+  });
+}
+
+render();`,
       previewState: {},
       repositoryUrl: '',
       branchName: '',
